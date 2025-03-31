@@ -1,103 +1,201 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Layout, Typography, Card, Statistic, Row, Col, Button, Divider, Alert } from 'antd';
+import { DatabaseOutlined, SearchOutlined, FilterOutlined, FileTextOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { useRouter } from 'next/navigation';
+import Navigation from './components/Navigation';
+import { isDatabaseInitialized, initDatabase, getDatabaseStats } from './utils/database';
+
+const { Header, Content } = Layout;
+const { Title, Text } = Typography;
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const router = useRouter();
+  const [loading, setLoading] = useState<boolean>(true);
+  const [dbInitialized, setDbInitialized] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<{
+    total: number;
+    titleScreening: { pending: number; included: number; excluded: number; maybe: number };
+    abstractScreening: { pending: number; included: number; excluded: number; maybe: number };
+  }>({ 
+    total: 0, 
+    titleScreening: { pending: 0, included: 0, excluded: 0, maybe: 0 },
+    abstractScreening: { pending: 0, included: 0, excluded: 0, maybe: 0 }
+  });
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // Check database initialization and load stats
+  const loadDatabaseStats = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Check if database is initialized
+      const isInitialized = await isDatabaseInitialized();
+      setDbInitialized(isInitialized);
+      
+      if (isInitialized) {
+        // Get database stats
+        const dbStats = await getDatabaseStats();
+        setStats(dbStats);
+      }
+    } catch (err: any) {
+      console.error('Error loading database stats:', err);
+      setError(err.message || 'An error occurred while loading database statistics');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Initialize database
+  const handleInitDatabase = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Initialize database
+      await initDatabase();
+      setDbInitialized(true);
+      
+      // Load stats after initialization
+      await loadDatabaseStats();
+    } catch (err: any) {
+      console.error('Error initializing database:', err);
+      setError(err.message || 'An error occurred while initializing the database');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load stats on component mount
+  useEffect(() => {
+    loadDatabaseStats();
+  }, []);
+
+  return (
+    <Layout className="min-h-screen">
+      <Header className="flex items-center bg-white">
+        <Title level={3} className="m-0">Literature Review Tool</Title>
+      </Header>
+      
+      <div className="bg-white">
+        <Navigation />
+      </div>
+      
+      <Content className="p-6">
+        <div className="bg-white p-6 rounded-md shadow-sm">
+          <Title level={4}>Dashboard</Title>
+          
+          {error && <Alert message={error} type="error" className="mb-4" />}
+          
+          {!dbInitialized && !loading ? (
+            <div className="mb-4">
+              <Alert
+                message="Database Not Initialized"
+                description="The database has not been initialized yet. Click the button below to initialize it."
+                type="warning"
+                showIcon
+              />
+              <div className="mt-4">
+                <Button type="primary" onClick={handleInitDatabase} loading={loading}>
+                  Initialize Database
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          
+          <Divider orientation="left">Literature Review Statistics</Divider>
+          
+          <Row gutter={[16, 16]} className="mb-4">
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic 
+                  title="Total Entries" 
+                  value={stats.total} 
+                  prefix={<DatabaseOutlined />} 
+                  loading={loading}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic 
+                  title="Title Screening Pending" 
+                  value={stats.titleScreening.pending} 
+                  prefix={<FilterOutlined />} 
+                  loading={loading}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic 
+                  title="Abstract Screening Pending" 
+                  value={stats.abstractScreening.pending} 
+                  prefix={<FileTextOutlined />} 
+                  loading={loading}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic 
+                  title="Included Literature" 
+                  value={stats.abstractScreening.included} 
+                  prefix={<CheckCircleOutlined />} 
+                  loading={loading}
+                />
+              </Card>
+            </Col>
+          </Row>
+          
+          <Divider orientation="left">Quick Actions</Divider>
+          
+          <Row gutter={[16, 16]}>
+            <Col xs={24} sm={12} md={6}>
+              <Card 
+                hoverable 
+                className="text-center" 
+                onClick={() => router.push('/search')}
+              >
+                <SearchOutlined style={{ fontSize: '24px' }} />
+                <div className="mt-2">Search & Import</div>
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card 
+                hoverable 
+                className="text-center" 
+                onClick={() => router.push('/title-screening')}
+              >
+                <FilterOutlined style={{ fontSize: '24px' }} />
+                <div className="mt-2">Title Screening</div>
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card 
+                hoverable 
+                className="text-center" 
+                onClick={() => router.push('/abstract-screening')}
+              >
+                <FileTextOutlined style={{ fontSize: '24px' }} />
+                <div className="mt-2">Abstract Screening</div>
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card 
+                hoverable 
+                className="text-center" 
+                onClick={() => router.push('/included-literature')}
+              >
+                <CheckCircleOutlined style={{ fontSize: '24px' }} />
+                <div className="mt-2">Included Literature</div>
+              </Card>
+            </Col>
+          </Row>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      </Content>
+    </Layout>
   );
 }

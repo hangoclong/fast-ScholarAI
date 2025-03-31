@@ -1,0 +1,1094 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Literature Review Tool API",
+    "description": "API for retrieving BibTeX data from academic databases",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Development server"
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Root",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+  
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/status": {
+      "get": {
+        "summary": "Auth Status",
+        "operationId": "auth_status_auth_status_get",
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+  
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/toggle": {
+      "post": {
+        "summary": "Toggle Auth",
+        "operationId": "toggle_auth_auth_toggle_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+  
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/scopus": {
+      "get": {
+        "summary": "Search Scopus",
+        "operationId": "search_scopus_search_scopus_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query for Scopus",
+              "title": "Query"
+            },
+            "description": "Search query for Scopus"
+          },
+          {
+            "name": "keywords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keywords to include in BibTeX",
+              "default": "",
+              "title": "Keywords"
+            },
+            "description": "Comma-separated keywords to include in BibTeX"
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Number of results per page",
+              "default": 25,
+              "title": "Count"
+            },
+            "description": "Number of results per page"
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Start index for pagination",
+              "default": 0,
+              "title": "Start"
+            },
+            "description": "Start index for pagination"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/springer": {
+      "get": {
+        "summary": "Search Springer",
+        "operationId": "search_springer_search_springer_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query for Springer",
+              "title": "Query"
+            },
+            "description": "Search query for Springer"
+          },
+          {
+            "name": "keywords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keywords to include in BibTeX",
+              "default": "",
+              "title": "Keywords"
+            },
+            "description": "Comma-separated keywords to include in BibTeX"
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Number of results per page",
+              "default": 25,
+              "title": "Count"
+            },
+            "description": "Number of results per page"
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Start index for pagination",
+              "default": 1,
+              "title": "Start"
+            },
+            "description": "Start index for pagination"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/ieee": {
+      "get": {
+        "summary": "Search Ieee",
+        "operationId": "search_ieee_search_ieee_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query for IEEE",
+              "title": "Query"
+            },
+            "description": "Search query for IEEE"
+          },
+          {
+            "name": "keywords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keywords to include in BibTeX",
+              "default": "",
+              "title": "Keywords"
+            },
+            "description": "Comma-separated keywords to include in BibTeX"
+          },
+          {
+            "name": "max_records",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Number of results per page",
+              "default": 25,
+              "title": "Max Records"
+            },
+            "description": "Number of results per page"
+          },
+          {
+            "name": "start_record",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Start index for pagination",
+              "default": 1,
+              "title": "Start Record"
+            },
+            "description": "Start index for pagination"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/wiley": {
+      "get": {
+        "summary": "Search Wiley",
+        "operationId": "search_wiley_search_wiley_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query for Wiley",
+              "title": "Query"
+            },
+            "description": "Search query for Wiley"
+          },
+          {
+            "name": "keywords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keywords to include in BibTeX",
+              "default": "",
+              "title": "Keywords"
+            },
+            "description": "Comma-separated keywords to include in BibTeX"
+          },
+          {
+            "name": "maximum_records",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Number of results per page",
+              "default": 20,
+              "title": "Maximum Records"
+            },
+            "description": "Number of results per page"
+          },
+          {
+            "name": "start_record",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Start index for pagination",
+              "default": 1,
+              "title": "Start Record"
+            },
+            "description": "Start index for pagination"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bibtex/scopus": {
+      "get": {
+        "summary": "Get Scopus Bibtex",
+        "operationId": "get_scopus_bibtex_bibtex_scopus_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query for Scopus",
+              "title": "Query"
+            },
+            "description": "Search query for Scopus"
+          },
+          {
+            "name": "keywords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keywords to include in BibTeX",
+              "default": "",
+              "title": "Keywords"
+            },
+            "description": "Comma-separated keywords to include in BibTeX"
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Number of results",
+              "default": 25,
+              "title": "Count"
+            },
+            "description": "Number of results"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BibTeXResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bibtex/springer": {
+      "get": {
+        "summary": "Get Springer Bibtex",
+        "operationId": "get_springer_bibtex_bibtex_springer_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query for Springer",
+              "title": "Query"
+            },
+            "description": "Search query for Springer"
+          },
+          {
+            "name": "keywords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keywords to include in BibTeX",
+              "default": "",
+              "title": "Keywords"
+            },
+            "description": "Comma-separated keywords to include in BibTeX"
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Number of results",
+              "default": 25,
+              "title": "Count"
+            },
+            "description": "Number of results"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BibTeXResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bibtex/ieee": {
+      "get": {
+        "summary": "Get Ieee Bibtex",
+        "operationId": "get_ieee_bibtex_bibtex_ieee_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query for IEEE",
+              "title": "Query"
+            },
+            "description": "Search query for IEEE"
+          },
+          {
+            "name": "keywords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keywords to include in BibTeX",
+              "default": "",
+              "title": "Keywords"
+            },
+            "description": "Comma-separated keywords to include in BibTeX"
+          },
+          {
+            "name": "max_records",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Number of results",
+              "default": 25,
+              "title": "Max Records"
+            },
+            "description": "Number of results"
+          },
+          {
+            "name": "start_record",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Start index for pagination",
+              "default": 1,
+              "title": "Start Record"
+            },
+            "description": "Start index for pagination"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BibTeXResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bibtex/wiley": {
+      "get": {
+        "summary": "Get Wiley Bibtex",
+        "operationId": "get_wiley_bibtex_bibtex_wiley_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query for Wiley",
+              "title": "Query"
+            },
+            "description": "Search query for Wiley"
+          },
+          {
+            "name": "keywords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keywords to include in BibTeX",
+              "default": "",
+              "title": "Keywords"
+            },
+            "description": "Comma-separated keywords to include in BibTeX"
+          },
+          {
+            "name": "maximum_records",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Number of results",
+              "default": 20,
+              "title": "Maximum Records"
+            },
+            "description": "Number of results"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BibTeXResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/combined": {
+      "get": {
+        "summary": "Search Combined",
+        "operationId": "search_combined_search_combined_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query for all databases",
+              "title": "Query"
+            },
+            "description": "Search query for all databases"
+          },
+          {
+            "name": "scopus_keywords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keywords for Scopus results",
+              "default": "",
+              "title": "Scopus Keywords"
+            },
+            "description": "Comma-separated keywords for Scopus results"
+          },
+          {
+            "name": "springer_keywords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keywords for Springer results",
+              "default": "",
+              "title": "Springer Keywords"
+            },
+            "description": "Comma-separated keywords for Springer results"
+          },
+          {
+            "name": "ieee_keywords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keywords for IEEE results",
+              "default": "",
+              "title": "Ieee Keywords"
+            },
+            "description": "Comma-separated keywords for IEEE results"
+          },
+          {
+            "name": "wiley_keywords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keywords for Wiley results",
+              "default": "",
+              "title": "Wiley Keywords"
+            },
+            "description": "Comma-separated keywords for Wiley results"
+          },
+          {
+            "name": "include_bibtex",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include BibTeX in the response",
+              "default": false,
+              "title": "Include Bibtex"
+            },
+            "description": "Include BibTeX in the response"
+          },
+          {
+            "name": "result_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Maximum number of results per database",
+              "default": 25,
+              "title": "Result Limit"
+            },
+            "description": "Maximum number of results per database"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CombinedSearchResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BibTeXResponse": {
+        "properties": {
+          "total_results": {
+            "type": "integer",
+            "title": "Total Results"
+          },
+          "bibtex": {
+            "type": "string",
+            "title": "Bibtex"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_results",
+          "bibtex"
+        ],
+        "title": "BibTeXResponse"
+      },
+      "CombinedSearchResult": {
+        "properties": {
+          "total_results": {
+            "type": "integer",
+            "title": "Total Results"
+          },
+          "results_by_database": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SearchResult"
+            },
+            "type": "object",
+            "title": "Results By Database"
+          },
+          "bibtex": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bibtex"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_results",
+          "results_by_database"
+        ],
+        "title": "CombinedSearchResult"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message"
+          }
+        },
+        "type": "object",
+        "required": ["error"]
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "SearchResult": {
+        "properties": {
+          "database": {
+            "type": "string",
+            "title": "Database"
+          },
+          "total_results": {
+            "type": "integer",
+            "title": "Total Results"
+          },
+          "results": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "database",
+          "total_results",
+          "results"
+        ],
+        "title": "SearchResult"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    }
+  },
+  "security": [
+    {
+      "APIKeyHeader": []
+    }
+  ]
+}
