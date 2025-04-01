@@ -499,6 +499,11 @@ export default function LiteratureTable({
             console.log('Row clicked:', record);
           },
         })}
+        rowSelection={{
+          onChange: (selectedRowKeys: React.Key[]) => {
+            setSelectedRowKeys(selectedRowKeys);
+          },
+        }}
       />
       
       {/* AI Processing Modal */}

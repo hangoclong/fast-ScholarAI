@@ -61,10 +61,9 @@ export async function POST(request: NextRequest) {
       try {
         // Extract JSON from the response if it's wrapped in markdown code blocks
         let jsonStr = responseText;
-        if (responseText.includes('```json')) {
+        const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
           jsonStr = responseText.split('```json')[1].split('```')[0].trim();
-        } else if (responseText.includes('```')) {
-          jsonStr = responseText.split('```')[1].split('```')[0].trim();
         }
         
         const parsedResponse = JSON.parse(jsonStr);
@@ -117,7 +116,6 @@ export async function PUT(request: NextRequest) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
-    const results = [];
     const generationConfig = {
       temperature: 0.7,
       topK: 40,
@@ -126,6 +124,7 @@ export async function PUT(request: NextRequest) {
     };
 
     // Process items sequentially to avoid rate limiting
+    const results: any[] = [];
     for (const item of items) {
       try {
         // Modify the prompt to request JSON response
@@ -149,17 +148,18 @@ export async function PUT(request: NextRequest) {
 
         if (result.response) {
           const responseText = result.response.text();
+          console.log("Prompt:", jsonPrompt);
+          console.log("ResponseText:", responseText);
           
           // Try to parse the response as JSON
           try {
-            // Extract JSON from the response if it's wrapped in markdown code blocks
             let jsonStr = responseText;
-            if (responseText.includes('```json')) {
-              jsonStr = responseText.split('```json')[1].split('```')[0].trim();
-            } else if (responseText.includes('```')) {
-              jsonStr = responseText.split('```')[1].split('```')[0].trim();
+            // Extract JSON from the response if it's wrapped in markdown code blocks
+            const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/);
+            if (jsonMatch) {
+              jsonStr = jsonMatch[1].trim();
             }
-            
+        
             const parsedResponse = JSON.parse(jsonStr);
             results.push({
               id: item.id,
@@ -167,15 +167,27 @@ export async function PUT(request: NextRequest) {
               parsed: parsedResponse,
               decision: parsedResponse.decision,
               confidence: parsedResponse.confidence,
-              reasoning: parsedResponse.reasoning
+              reasoning: parsedResponse.reasoning,
+              screeningType: screeningType
             });
           } catch (parseError) {
             console.warn(`Failed to parse Gemini response as JSON for item ${item.id}:`, parseError);
-            // Add the raw text if parsing fails
+            console.log("Prompt:", jsonPrompt);
+            console.log("ResponseText:", responseText);
+            // Fallback to extracting information from raw text
+            const decisionMatch = responseText.match(/(INCLUDE|EXCLUDE|MAYBE)/i);
+            const decision = decisionMatch ? decisionMatch[1].toUpperCase() : 'MAYBE';
+            const confidence = 0.5; // Default confidence
+            const reasoning = responseText; // Use the whole response as reasoning
+
             results.push({
               id: item.id,
               raw: responseText,
               parsed: null,
+              decision: decision,
+              confidence: confidence,
+              reasoning: reasoning,
+              screeningType: screeningType,
               error: "Failed to parse response as JSON"
             });
           }
@@ -183,19 +195,23 @@ export async function PUT(request: NextRequest) {
           results.push({
             id: item.id,
             error: 'Failed to get response from Gemini',
-            details: { blockReason: 'Response was empty or blocked' }
+            details: { blockReason: 'Response was empty or blocked' },
+            screeningType: screeningType
           });
         }
       } catch (itemError: any) {
         console.error(`Error processing item ${item.id}:`, itemError);
         results.push({
           id: item.id,
-          error: itemError.message || 'An error occurred processing this item'
+          error: itemError.message || 'An error occurred processing this item',
+          screeningType: screeningType
         });
       }
 
       // Add a small delay between requests to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Add a dynamic delay between requests to avoid rate limiting
+      const delay = Math.min(100 * items.length, 2000); // Maximum delay of 2 seconds
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
 
     return NextResponse.json({ results });

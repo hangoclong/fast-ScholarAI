@@ -82,14 +82,15 @@ export default function TitleScreeningPage() {
   // Handle screening action
   const handleScreeningAction = async (id: string, status: ScreeningStatus, notes?: string) => {
     try {
+      console.log('handleScreeningAction - id:', id, 'status:', status, 'notes:', notes);
       // Update screening status in database
       await updateScreeningStatus(id, 'title', status, notes);
-      
+
       // Update local state to reflect the change
-      setEntries(prevEntries => 
-        prevEntries.map(entry => 
-          entry.ID === id 
-            ? { ...entry, titleScreening: status, title_screening_notes: notes || entry.title_screening_notes } 
+      setEntries(prevEntries =>
+        prevEntries.map(entry =>
+          entry.ID === id
+            ? { ...entry, titleScreening: status, title_screening_notes: notes || entry.title_screening_notes }
             : entry
         )
       );

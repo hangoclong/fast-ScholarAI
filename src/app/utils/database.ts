@@ -166,19 +166,19 @@ export async function updateScreeningStatus(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ id, screeningType, status, notes }),
+      body: JSON.stringify({ screeningType: screeningType, status: status, notes: notes, id: id }),
     });
-    
+
     if (!response.ok) {
       console.error(`API request failed with status ${response.status}`);
       const errorText = await response.text();
       console.error('Error response:', errorText);
       throw new Error(`API request failed with status ${response.status}: ${errorText}`);
     }
-    
+
     const data = await response.json();
     console.log('API response:', data);
-    
+
     if (!data.success) {
       console.error('API returned error:', data);
       throw new Error(data.message || `Failed to update ${screeningType} screening status`);

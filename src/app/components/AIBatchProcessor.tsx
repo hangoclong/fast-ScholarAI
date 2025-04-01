@@ -4,8 +4,8 @@ import React, { useState } from 'react';
 import { Button, Modal, Progress, Typography, List, Tag, Space, message } from 'antd';
 import { RobotOutlined, SettingOutlined } from '@ant-design/icons';
 import { BibEntry, ScreeningStatus } from '../types';
-import { getAIPrompt } from '../utils/database';
-import { batchProcessWithGemini } from '../services/geminiService';
+import { getAIPrompt, getAPIKey } from '../utils/database'; // Added getAPIKey
+import { processWithGemini } from '../services/geminiService'; // Changed import
 import AIPromptDialog from './AIPromptDialog';
 
 const { Text, Paragraph } = Typography;
@@ -104,7 +104,7 @@ const AIBatchProcessor: React.FC<AIBatchProcessorProps> = ({
       try {
         prompt = await getAIPrompt(screeningType);
       } catch (error: any) {
-        messageApi.error(`Failed to get AI prompt: ${error.message}`);
+        messageApi.error(`Failed to get AI prompt: ${error.message || 'Unknown error'}`);
         setProcessingModalVisible(false);
         setProcessing(false);
         return;
@@ -118,9 +118,13 @@ const AIBatchProcessor: React.FC<AIBatchProcessorProps> = ({
         return;
       }
       
-      const pendingEntries = entries.filter(entry => 
-        screeningType === 'title' ? entry.titleScreening === 'pending' : entry.abstractScreening === 'pending'
-      );
+      const pendingEntries = entries.filter(entry => {
+        if (screeningType === 'title') {
+          return entry.titleScreening !== 'included' && entry.titleScreening !== 'excluded';
+        } else {
+          return entry.abstractScreening !== 'included' && entry.abstractScreening !== 'excluded';
+        }
+      });
       
       if (pendingEntries.length === 0) {
         messageApi.info('No pending entries to process');
@@ -134,52 +138,38 @@ const AIBatchProcessor: React.FC<AIBatchProcessorProps> = ({
         id: entry.id,
         text: extractText(entry)
       }));
-      
-      // Process the entries in batches
-      let batchResults;
-      try {
-        batchResults = await batchProcessWithGemini(prompt, items, screeningType);
-      } catch (error: any) {
-        // Check if the error is related to missing API key
-        if (error.message && error.message.includes('API key')) {
-          messageApi.error('API key is missing. Please set it in the settings.');
-        } else {
-          messageApi.error(`Error during batch processing: ${error.message}`);
-        }
-        console.error('Batch processing error:', error);
-        setProcessingModalVisible(false);
-        setProcessing(false);
-        return;
-      }
-      
-      // Process the results
+
+      // Process entries one by one
       const processedResults = [];
       let processedCount = 0;
-      
-      console.log('Processing batch results:', batchResults);
-      
-      for (const result of batchResults) {
+      const totalEntriesToProcess = pendingEntries.length;
+
+      for (const entry of pendingEntries) {
         processedCount++;
-        setProgress(Math.floor((processedCount / pendingEntries.length) * 100));
-        
-        console.log('Processing result:', result);
-        
-        if (result.error) {
-          console.error(`Error processing entry ${result.id}:`, result.error);
-          continue;
-        }
-        
-        const { status, notes } = parseAIResponse(result.result);
-        processedResults.push({ id: result.id, status, notes });
-        
-        // Update the entry status
+        setProgress(Math.floor((processedCount / totalEntriesToProcess) * 100));
+
         try {
-          console.log(`Updating entry ${result.id} with status:`, { status, notes });
-          await onScreeningAction(result.id, status, notes);
-          console.log(`Successfully updated entry ${result.id}`);
+          console.log(`Processing entry ${entry.ID}...`);
+          const textToProcess = extractText(entry);
+          const resultText = await processWithGemini(prompt, textToProcess, screeningType);
+          const { status, notes } = parseAIResponse(resultText);
+
+          processedResults.push({ id: entry.ID, status: status as ScreeningStatus, notes });
+
+          // Update the entry status immediately
+          await onScreeningAction(entry.ID, status as ScreeningStatus, notes);
+          console.log(`Successfully processed and updated entry ${entry.ID}`);
+
+          // Optional: Add a small delay between requests if needed
+          // await new Promise(resolve => setTimeout(resolve, 200));
+
         } catch (error: any) {
-          console.error(`Error updating entry ${result.id}:`, error);
-          console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+          console.error(`Error processing entry ${entry.ID}:`, error);
+          messageApi.error(`Error processing entry ${entry.ID}: ${error.message}`);
+          // Add error result to display later
+          processedResults.push({ id: entry.ID, status: 'pending' as ScreeningStatus, notes: `Error: ${error.message}` });
+          // Optionally continue to the next entry or stop processing
+          // continue;
         }
       }
       

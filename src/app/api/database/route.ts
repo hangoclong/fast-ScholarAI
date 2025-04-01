@@ -562,13 +562,14 @@ export async function POST(request: NextRequest) {
         }
         
         try {
+          console.log('Database API - update-screening - body:', body);
           await updateScreeningStatus(body.id, body.screeningType, body.status, body.notes);
-          console.log('Database API - Successfully updated screening status');
+          console.log('Database API - Successfully updated screening status', body);
           return NextResponse.json({ success: true });
         } catch (error) {
           console.error('Database API - Error updating screening status:', error);
-          return NextResponse.json({ 
-            success: false, 
+          return NextResponse.json({
+            success: false,
             message: error instanceof Error ? error.message : 'Unknown error updating screening status'
           }, { status: 500 });
         }

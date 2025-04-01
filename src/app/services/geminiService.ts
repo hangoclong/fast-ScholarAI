@@ -82,7 +82,7 @@ export async function processWithGemini(
   } catch (error: any) {
     console.error('Error calling Gemini API:', error);
     throw new Error(
-      `Failed to process with Gemini: ${error.message || 'Unknown error'}`
+      `Failed to process with Gemini: ${error.message || 'Unknown error'}. Please check your API key and network connection.`
     );
   }
 }
@@ -113,7 +113,7 @@ export async function batchProcessWithGemini(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ prompt, items, screeningType, apiKey }),
+      body: JSON.stringify({ prompt: prompt, items: items, screeningType: screeningType, apiKey: apiKey }),
     });
 
     if (!response.ok) {
