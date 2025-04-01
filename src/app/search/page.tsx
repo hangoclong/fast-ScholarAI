@@ -1,18 +1,17 @@
 'use client';
 
-import { useState } from 'react';
-import { Layout, Form, Input, Button, Upload, Spin, Alert, Typography, Divider, Space, message } from 'antd';
-import { UploadOutlined, SearchOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { useState, useEffect } from 'react';
+import { Layout, Form, Input, Button, Upload, Spin, Alert, Typography, Divider, Space, message, Table } from 'antd';
+import { UploadOutlined, SearchOutlined, DatabaseOutlined, GithubOutlined } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
 import axios from 'axios';
-import { BibEntry } from '../types';
+import { API_BASE_URL, ENDPOINTS, DEFAULT_PARAMS, API_HEADERS } from '../config/api';
 import { parseBibtex } from '../utils/bibtexParser';
-import { API_BASE_URL, API_KEY, DEFAULT_PARAMS, ENDPOINTS, API_HEADERS } from '../config/api';
-import Navigation from '../components/Navigation';
-import LiteratureTable from '../components/LiteratureTable';
 import { initDatabase, saveEntries, clearDatabase } from '../utils/database';
+import { BibEntry } from '../types';
+import Navigation from '../components/Navigation';
 
-const { Header, Content } = Layout;
+const { Header, Content, Footer } = Layout;
 const { Title, Text } = Typography;
 
 export default function SearchPage() {
@@ -21,6 +20,13 @@ export default function SearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [entries, setEntries] = useState<BibEntry[]>([]);
   const [messageApi, contextHolder] = message.useMessage();
+
+  // Log entries whenever they change
+  useEffect(() => {
+    console.log('SearchPage - entries state updated:', entries);
+    console.log('SearchPage - entries length:', entries.length);
+    console.log('SearchPage - entries is array:', Array.isArray(entries));
+  }, [entries]);
 
   // Handle API search
   const handleSearch = async (source: 'scopus' | 'ieee' | 'springer') => {
@@ -49,25 +55,77 @@ export default function SearchPage() {
         params.count = DEFAULT_PARAMS[source].count;
       }
       
+      console.log(`Making API request to ${endpoint} with params:`, params);
+      
       // Make the API request with headers for authentication
       const response = await axios.get(endpoint, { 
         params,
         headers: API_HEADERS
       });
       
+      // Check if response data is valid
+      if (!response.data) {
+        throw new Error('Invalid API response: No data received');
+      }
+      
+      console.log('API response received:', response.status, response.statusText);
+      
       // The API returns a BibTeXResponse object with a bibtex string
+      // Check if bibtex property exists in the response
       const bibtexString = response.data.bibtex;
+      
+      if (!bibtexString) {
+        console.error('API response does not contain bibtex data:', response.data);
+        throw new Error('Invalid API response format: No BibTeX data found');
+      }
+      
+      console.log('Raw BibTeX string received, length:', bibtexString.length);
+      console.log('BibTeX sample:', bibtexString.substring(0, 200) + '...');
       
       // Parse the BibTeX string
       const parsedEntries = parseBibtex(bibtexString);
-      setEntries(parsedEntries);
+      
+      console.log('Parsed entries count:', parsedEntries.length);
+      if (parsedEntries.length > 0) {
+        console.log('First parsed entry:', JSON.stringify(parsedEntries[0], null, 2));
+      }
+      
+      if (!parsedEntries || parsedEntries.length === 0) {
+        messageApi.info('No entries found. Try a different search query.');
+        setEntries([]);
+        return;
+      }
+      
+      // Ensure all entries have the required fields
+      const formattedEntries = parsedEntries.map((entry, index) => ({
+        ...entry,
+        ID: entry.ID || `entry-${index}-${Date.now()}`,
+        title: entry.title || 'No Title',
+        author: entry.author || 'Unknown Author',
+        year: entry.year || '',
+        journal: entry.journal || entry.booktitle || entry.publisher || ''
+      }));
+      
+      console.log('Formatted entries count:', formattedEntries.length);
+      if (formattedEntries.length > 0) {
+        console.log('First formatted entry:', JSON.stringify(formattedEntries[0], null, 2));
+      }
+      
+      // Set entries state with the formatted entries
+      setEntries(formattedEntries);
+      console.log('Entries state updated with formatted entries');
       
       // Show success message
-      messageApi.success(`Found ${parsedEntries.length} entries from ${source}`);
+      messageApi.success(`Found ${formattedEntries.length} entries from ${source}`);
+      
+      // Log success for debugging
+      console.log(`Successfully parsed ${formattedEntries.length} entries from ${source}`);
     } catch (err: any) {
       console.error('Error during API search:', err);
       setError(err.message || 'An error occurred during the search');
       messageApi.error('Search failed. Please try again.');
+      // Set entries to empty array on error
+      setEntries([]);
     } finally {
       setLoading(false);
     }
@@ -126,9 +184,6 @@ export default function SearchPage() {
         return;
       }
       
-      // Initialize database if needed
-      await initDatabase();
-      
       // Save entries to database
       await saveEntries(entries, source);
       
@@ -149,10 +204,13 @@ export default function SearchPage() {
       // Clear database
       await clearDatabase();
       
+      // Refresh entries
+      setEntries([]);
+      
       messageApi.success('Database cleared successfully');
     } catch (error: any) {
       console.error('Error clearing database:', error);
-      messageApi.error('Failed to clear database');
+      messageApi.error(`Failed to clear database: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -161,18 +219,20 @@ export default function SearchPage() {
   return (
     <Layout className="min-h-screen">
       {contextHolder}
-      <Header className="flex items-center bg-white">
-        <Title level={3} className="m-0">Literature Review Tool</Title>
+      <Header className="flex items-center justify-between" style={{ background: '#e6f7ff', padding: '0 24px' }}>
+        <div className="flex items-center">
+          <Title level={3} className="m-0" style={{ color: '#1890ff' }}>Literature Review Tool</Title>
+        </div>
       </Header>
       
-      <div className="bg-white">
+      <div style={{ background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
         <Navigation />
       </div>
       
-      <Content className="p-6">
-        <div className="bg-white p-6 rounded-md shadow-sm">
+      <Content className="p-6" style={{ background: '#f5f5f5' }}>
+        <div className="bg-white p-6 rounded-lg shadow-md">
           {/* API Search Section */}
-          <Title level={4}>Search Academic Databases</Title>
+          <Title level={4} style={{ color: '#1890ff' }}>Search Academic Databases</Title>
           <Form form={form} layout="vertical">
             <Form.Item
               name="query"
@@ -191,6 +251,7 @@ export default function SearchPage() {
                   icon={<SearchOutlined />} 
                   onClick={() => handleSearch('scopus')}
                   loading={loading}
+                  className="hover:shadow-md transition-all duration-300"
                 >
                   Search Scopus
                 </Button>
@@ -199,6 +260,7 @@ export default function SearchPage() {
                   icon={<SearchOutlined />} 
                   onClick={() => handleSearch('ieee')}
                   loading={loading}
+                  className="hover:shadow-md transition-all duration-300"
                 >
                   Search IEEE
                 </Button>
@@ -207,6 +269,7 @@ export default function SearchPage() {
                   icon={<SearchOutlined />} 
                   onClick={() => handleSearch('springer')}
                   loading={loading}
+                  className="hover:shadow-md transition-all duration-300"
                 >
                   Search Springer
                 </Button>
@@ -214,26 +277,26 @@ export default function SearchPage() {
             </Form.Item>
           </Form>
 
-          <Divider />
+          <Divider style={{ borderColor: '#e6f7ff' }} />
 
           {/* BibTeX File Import Section */}
-          <Title level={4}>Import BibTeX File</Title>
+          <Title level={4} style={{ color: '#1890ff' }}>Import BibTeX File</Title>
           <Upload
             accept=".bib"
             customRequest={handleFileUpload}
             showUploadList={false}
             maxCount={1}
           >
-            <Button icon={<UploadOutlined />} loading={loading}>
+            <Button icon={<UploadOutlined />} loading={loading} className="hover:shadow-md transition-all duration-300">
               Select BibTeX File
             </Button>
             <Text className="ml-2">Upload a .bib file to import references</Text>
           </Upload>
 
-          <Divider />
+          <Divider style={{ borderColor: '#e6f7ff' }} />
 
           {/* Database Actions */}
-          <Title level={4}>Database Actions</Title>
+          <Title level={4} style={{ color: '#1890ff' }}>Database Actions</Title>
           <Space>
             <Button 
               type="primary" 
@@ -241,6 +304,7 @@ export default function SearchPage() {
               onClick={() => handleSaveToDatabase('search')}
               loading={loading}
               disabled={entries.length === 0}
+              className="hover:shadow-md transition-all duration-300"
             >
               Save Results to Database
             </Button>
@@ -249,25 +313,108 @@ export default function SearchPage() {
               icon={<DatabaseOutlined />} 
               onClick={handleClearDatabase}
               loading={loading}
+              className="hover:shadow-md transition-all duration-300"
             >
               Clear Database
             </Button>
           </Space>
 
-          <Divider />
+          <Divider style={{ borderColor: '#e6f7ff' }} />
 
           {/* Results Section */}
-          <Title level={4}>Results {entries.length > 0 && `(${entries.length})`}</Title>
+          <Title level={4} style={{ color: '#1890ff' }}>Results {entries.length > 0 && `(${entries.length})`}</Title>
           {error && <Alert message={error} type="error" className="mb-4" />}
           {loading && entries.length === 0 ? (
             <div className="flex justify-center items-center py-8">
               <Spin size="large" />
             </div>
           ) : (
-            <LiteratureTable entries={entries} loading={loading} />
+            <div data-component-name="SearchPage">
+              <div className="mb-4">
+                {entries.length > 0 ? (
+                  <Text type="secondary">Displaying {entries.length} entries</Text>
+                ) : (
+                  <Text type="secondary">No entries to display. Try searching or importing a file.</Text>
+                )}
+              </div>
+              
+              {/* Direct Table Implementation */}
+              <Table
+                dataSource={entries.map((entry, index) => ({
+                  ...entry,
+                  key: entry.ID || `entry-${index}`,
+                  title: entry.title || 'No Title',
+                  author: entry.author || 'Unknown Author',
+                  year: entry.year || '',
+                  journal: entry.journal || entry.booktitle || entry.publisher || ''
+                }))}
+                columns={[
+                  {
+                    title: 'Year',
+                    dataIndex: 'year',
+                    key: 'year',
+                    width: 80,
+                    render: (year) => year || 'N/A',
+                  },
+                  {
+                    title: 'Title',
+                    dataIndex: 'title',
+                    key: 'title',
+                    render: (title) => (
+                      <div style={{ wordWrap: 'break-word', wordBreak: 'break-word', maxHeight: '3em', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {title || 'No Title'}
+                      </div>
+                    ),
+                  },
+                  {
+                    title: 'Author(s)',
+                    dataIndex: 'author',
+                    key: 'author',
+                    width: 200,
+                    render: (author) => (
+                      <div style={{ wordWrap: 'break-word', wordBreak: 'break-word', maxHeight: '3em', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {author || 'Unknown Author'}
+                      </div>
+                    ),
+                  },
+                  {
+                    title: 'Publication Venue',
+                    dataIndex: 'journal',
+                    key: 'journal',
+                    render: (journal, record: any) => {
+                      const venue = journal || record.booktitle || record.publisher || 'N/A';
+                      return (
+                        <div style={{ wordWrap: 'break-word', wordBreak: 'break-word', maxHeight: '3em', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {venue}
+                        </div>
+                      );
+                    },
+                  },
+                ]}
+                pagination={{
+                  pageSize: 10,
+                  showSizeChanger: true,
+                  pageSizeOptions: ['10', '20', '50', '100'],
+                }}
+                loading={loading}
+                size="middle"
+                className="literature-table"
+              />
+            </div>
           )}
         </div>
       </Content>
+      
+      <Footer style={{ textAlign: 'center', background: '#e6f7ff', padding: '16px' }}>
+        <div className="flex flex-col items-center justify-center">
+          <Text>Literature Review Tool u00a9 {new Date().getFullYear()}</Text>
+          <div className="mt-2">
+            <a href="https://github.com/yourusername/literature-review-tool" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700">
+              <GithubOutlined style={{ fontSize: '18px', marginRight: '4px' }} /> View on GitHub
+            </a>
+          </div>
+        </div>
+      </Footer>
     </Layout>
   );
 }

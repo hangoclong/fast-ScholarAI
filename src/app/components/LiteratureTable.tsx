@@ -8,6 +8,9 @@ import type { TableProps, ColumnsType } from 'antd/es/table';
 import { BibEntry, ScreeningStatus } from '../types';
 import ExpandableRow from './ExpandableRow';
 import { updateEntryAbstract } from '../utils/database';
+import AIBatchProcessor from './AIBatchProcessor';
+import { getAIPrompt, getAPIKey } from '../utils/database';
+import { processWithGemini } from '../services/geminiService';
 
 const { Search } = Input;
 const { Option } = Select;
@@ -23,81 +26,90 @@ interface LiteratureTableProps {
   refreshData?: () => void; // Function to refresh the data
 }
 
-const LiteratureTable: React.FC<LiteratureTableProps> = ({
-  entries,
-  loading,
+export default function LiteratureTable({
+  entries = [],
+  loading = false,
   screeningType,
   onScreeningAction,
   showScreeningControls = false,
   showAllEntries = false,
   refreshData,
-}) => {
+}: LiteratureTableProps) {
+  console.log('LiteratureTable - received entries:', entries);
+  console.log('LiteratureTable - entries length:', entries?.length || 0);
+  console.log('LiteratureTable - entries is array:', Array.isArray(entries));
+  
+  // Initialize state
   const [searchText, setSearchText] = useState<string>('');
   const [filterField, setFilterField] = useState<string>('all');
   const [sortField, setSortField] = useState<string>('year');
   const [sortOrder, setSortOrder] = useState<'ascend' | 'descend'>('descend');
-  const [aiProcessingModalVisible, setAiProcessingModalVisible] = useState<boolean>(false);
-  const [aiProcessingProgress, setAiProcessingProgress] = useState<number>(0);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [aiModalVisible, setAIModalVisible] = useState<boolean>(false);
   const [aiProcessingStatus, setAiProcessingStatus] = useState<string>('idle');
+  const [aiProcessingProgress, setAiProcessingProgress] = useState<number>(0);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [messageApi, contextHolder] = message.useMessage();
-  const [filteredEntries, setFilteredEntries] = useState(entries);
   
-  useEffect(() => {
-    setFilteredEntries(entries);
-  }, [entries]);
-
-  const statusFilteredEntries = useMemo(() => {
-    return showAllEntries 
-      ? filteredEntries
-      : screeningType === 'title'
-        ? filteredEntries.filter(entry => !entry.title_screening_status || entry.title_screening_status === 'pending')
-        : filteredEntries.filter(entry => entry.title_screening_status === 'included' && 
-            (!entry.abstract_screening_status || entry.abstract_screening_status === 'pending'));
-  }, [filteredEntries, showAllEntries, screeningType]);
-
-  const displayedEntries = useMemo(() => {
-    if (!searchText) return statusFilteredEntries;
+  // Filter entries based on screening type and showAllEntries
+  const filteredByScreeningEntries = useMemo(() => {
+    if (!Array.isArray(entries)) return [];
+    if (showAllEntries) return entries;
+    
+    if (screeningType === 'title') {
+      return entries.filter(entry => !entry.title_screening_status || entry.title_screening_status === 'pending');
+    } else if (screeningType === 'abstract') {
+      return entries.filter(entry => 
+        entry.title_screening_status === 'included' && 
+        (!entry.abstract_screening_status || entry.abstract_screening_status === 'pending')
+      );
+    }
+    
+    return entries;
+  }, [entries, screeningType, showAllEntries]);
+  
+  // Filter entries based on search text
+  const filteredBySearchEntries = useMemo(() => {
+    if (!searchText) return filteredByScreeningEntries;
     
     const searchLower = searchText.toLowerCase();
     
-    // Filter by specific field if selected
-    if (filterField !== 'all') {
-      return statusFilteredEntries.filter(entry => {
-        const fieldValue = entry[filterField as keyof BibEntry];
-        return typeof fieldValue === 'string' && fieldValue.toLowerCase().includes(searchLower);
-      });
-    }
+    return filteredByScreeningEntries.filter(entry => {
+      if (filterField === 'all') {
+        // Search in all text fields
+        return Object.keys(entry).some(key => {
+          const value = entry[key as keyof BibEntry];
+          return typeof value === 'string' && value.toLowerCase().includes(searchLower);
+        });
+      } else {
+        // Search in specific field
+        const value = entry[filterField as keyof BibEntry];
+        return typeof value === 'string' && value.toLowerCase().includes(searchLower);
+      }
+    });
+  }, [filteredByScreeningEntries, searchText, filterField]);
+  
+  // Sort entries
+  const sortedEntries = useMemo(() => {
+    if (!filteredBySearchEntries.length) return [];
     
-    // Search across all relevant fields
-    return statusFilteredEntries.filter(entry => (
-      (entry.title?.toLowerCase().includes(searchLower) ?? false) ||
-      (entry.author?.toLowerCase().includes(searchLower) ?? false) ||
-      (entry.year?.toLowerCase().includes(searchLower) ?? false) ||
-      (entry.journal?.toLowerCase().includes(searchLower) ?? false) ||
-      (entry.booktitle?.toLowerCase().includes(searchLower) ?? false) ||
-      (entry.publisher?.toLowerCase().includes(searchLower) ?? false) ||
-      (entry.abstract?.toLowerCase().includes(searchLower) ?? false) ||
-      (entry.keywords?.toLowerCase().includes(searchLower) ?? false)
-    ));
-  }, [searchText, filterField, statusFilteredEntries]);
-
-  // Sort entries based on sort field and order
-  const sortedEntries = [...displayedEntries].sort((a, b) => {
-    const fieldA = a[sortField as keyof BibEntry] as string || '';
-    const fieldB = b[sortField as keyof BibEntry] as string || '';
-    
-    // Special case for year (numeric sorting)
-    if (sortField === 'year') {
-      const yearA = parseInt(fieldA) || 0;
-      const yearB = parseInt(fieldB) || 0;
-      return sortOrder === 'ascend' ? yearA - yearB : yearB - yearA;
-    }
-    
-    // String comparison for other fields
-    return sortOrder === 'ascend' 
-      ? fieldA.localeCompare(fieldB) 
-      : fieldB.localeCompare(fieldA);
-  });
+    return [...filteredBySearchEntries].sort((a, b) => {
+      const aValue = a[sortField as keyof BibEntry] || '';
+      const bValue = b[sortField as keyof BibEntry] || '';
+      
+      // Special handling for year field
+      if (sortField === 'year') {
+        const yearA = parseInt(String(aValue)) || 0;
+        const yearB = parseInt(String(bValue)) || 0;
+        return sortOrder === 'ascend' ? yearA - yearB : yearB - yearA;
+      }
+      
+      // String comparison for other fields
+      const strA = String(aValue).toLowerCase();
+      const strB = String(bValue).toLowerCase();
+      return sortOrder === 'ascend' ? strA.localeCompare(strB) : strB.localeCompare(strA);
+    });
+  }, [filteredBySearchEntries, sortField, sortOrder]);
 
   // Define screening status tag color
   const getStatusColor = (status?: ScreeningStatus) => {
@@ -110,168 +122,45 @@ const LiteratureTable: React.FC<LiteratureTableProps> = ({
     }
   };
 
-  // Mock AI screening function for individual entries
-  const handleAiScreening = (record: BibEntry) => {
-    // Simulate AI processing
-    messageApi.loading('AI is analyzing the entry...');
+  // AI screening for individual entries using Gemini API
+  const handleAiScreening = async (record: BibEntry) => {
+    if (!screeningType || !onScreeningAction) return;
     
-    setTimeout(() => {
-      // Analyze title and abstract for keywords
-      const titleLower = record.title?.toLowerCase() || '';
-      const abstractLower = record.abstract?.toLowerCase() || '';
-      const contentToAnalyze = screeningType === 'title' ? titleLower : titleLower + ' ' + abstractLower;
+    try {
+      // Show loading message
+      messageApi.loading('AI is analyzing the entry...');
       
-      // Default probability
-      let inclusionProbability = 0.5;
+      // Get the prompt and API key
+      const prompt = await getAIPrompt(screeningType);
+      const apiKey = await getAPIKey('gemini');
       
-      // Positive signals (increase probability)
-      const positiveKeywords = ['significant', 'important', 'novel', 'breakthrough', 'effective', 'improvement'];
-      positiveKeywords.forEach(keyword => {
-        if (contentToAnalyze.includes(keyword)) {
-          inclusionProbability += 0.1; // Increase probability for each positive keyword
-        }
-      });
+      // Extract text based on screening type
+      const text = screeningType === 'title' 
+        ? record.title || ''
+        : (record.abstract || record.title || '');
       
-      // Negative signals (decrease probability)
-      const negativeKeywords = ['limited', 'preliminary', 'inconclusive', 'restricted', 'narrow'];
-      negativeKeywords.forEach(keyword => {
-        if (contentToAnalyze.includes(keyword)) {
-          inclusionProbability -= 0.1; // Decrease probability for each negative keyword
-        }
-      });
+      // Process with Gemini API
+      const result = await processWithGemini(prompt, text, screeningType);
       
-      // Ensure probability is between 0 and 1
-      inclusionProbability = Math.max(0, Math.min(1, inclusionProbability));
+      // Parse the result to determine screening status
+      const upperResult = result.toUpperCase();
+      let status: ScreeningStatus = 'maybe';
       
-      // Threshold for decision (can be adjusted)
-      const inclusionThreshold = 0.6;
-      const exclusionThreshold = 0.4;
-      
-      let aiDecision: ScreeningStatus = 'maybe';
-      let aiNotes = `AI analysis: Inclusion probability ${(inclusionProbability * 100).toFixed(1)}%`;
-      
-      if (inclusionProbability >= inclusionThreshold) {
-        aiDecision = 'included';
-        aiNotes += '. Recommended for inclusion based on content analysis.';
-      } else if (inclusionProbability <= exclusionThreshold) {
-        aiDecision = 'excluded';
-        aiNotes += '. Recommended for exclusion based on content analysis.';
-      } else {
-        aiNotes += '. Requires human review - confidence level insufficient for automated decision.';
+      if (upperResult.includes('INCLUDE')) {
+        status = 'included';
+      } else if (upperResult.includes('EXCLUDE')) {
+        status = 'excluded';
       }
       
-      // Update screening status if callback is provided
-      if (onScreeningAction) {
-        onScreeningAction(record.ID, aiDecision, aiNotes);
-      }
+      // Update screening status
+      onScreeningAction(record.ID, status, result);
       
+      // Show success message
       messageApi.success('AI analysis complete');
-    }, 1000);
-  };
-
-  // Batch AI processing
-  const handleBatchAiProcessing = () => {
-    setAiProcessingModalVisible(true);
-    setAiProcessingProgress(0);
-    setAiProcessingStatus('processing');
-    
-    // Get entries that need processing
-    const entriesToProcess = sortedEntries.filter(entry => {
-      const status = screeningType === 'title' 
-        ? entry.title_screening_status 
-        : entry.abstract_screening_status;
-      return !status || status === 'pending' || status === 'in_progress';
-    });
-    
-    if (entriesToProcess.length === 0) {
-      setAiProcessingStatus('complete');
-      messageApi.info('No entries to process');
-      return;
+    } catch (error: any) {
+      console.error('Error during AI screening:', error);
+      messageApi.error(`AI screening failed: ${error.message}`);
     }
-    
-    // Process entries with delay to simulate API calls
-    let processed = 0;
-    const totalToProcess = entriesToProcess.length;
-    let includedCount = 0;
-    let excludedCount = 0;
-    let maybeCount = 0;
-    
-    const processNext = () => {
-      if (processed >= totalToProcess) {
-        setAiProcessingStatus('complete');
-        setAiProcessingProgress(100);
-        
-        // Show summary of processing results
-        messageApi.success(`Processing complete: ${includedCount} included, ${excludedCount} excluded, ${maybeCount} maybe`);
-        return;
-      }
-      
-      const entry = entriesToProcess[processed];
-      processed++;
-      
-      // Mock decision based on content analysis
-      // In a real implementation, this would call an AI API
-      let inclusionProbability = 0.5; // Default probability
-      
-      // Analyze title and abstract for keywords
-      const titleLower = entry.title?.toLowerCase() || '';
-      const abstractLower = entry.abstract?.toLowerCase() || '';
-      const contentToAnalyze = screeningType === 'title' ? titleLower : titleLower + ' ' + abstractLower;
-      
-      // Positive signals (increase probability)
-      const positiveKeywords = ['significant', 'important', 'novel', 'breakthrough', 'effective', 'improvement'];
-      positiveKeywords.forEach(keyword => {
-        if (contentToAnalyze.includes(keyword)) {
-          inclusionProbability += 0.1; // Increase probability for each positive keyword
-        }
-      });
-      
-      // Negative signals (decrease probability)
-      const negativeKeywords = ['limited', 'preliminary', 'inconclusive', 'restricted', 'narrow'];
-      negativeKeywords.forEach(keyword => {
-        if (contentToAnalyze.includes(keyword)) {
-          inclusionProbability -= 0.1; // Decrease probability for each negative keyword
-        }
-      });
-      
-      // Ensure probability is between 0 and 1
-      inclusionProbability = Math.max(0, Math.min(1, inclusionProbability));
-      
-      // Threshold for decision (can be adjusted)
-      const inclusionThreshold = 0.6;
-      const exclusionThreshold = 0.4;
-      
-      let aiDecision: ScreeningStatus = 'maybe';
-      let aiNotes = `AI analysis: Inclusion probability ${(inclusionProbability * 100).toFixed(1)}%`;
-      
-      if (inclusionProbability >= inclusionThreshold) {
-        aiDecision = 'included';
-        aiNotes += '. Recommended for inclusion based on content analysis.';
-        includedCount++;
-      } else if (inclusionProbability <= exclusionThreshold) {
-        aiDecision = 'excluded';
-        aiNotes += '. Recommended for exclusion based on content analysis.';
-        excludedCount++;
-      } else {
-        aiNotes += '. Requires human review - confidence level insufficient for automated decision.';
-        maybeCount++;
-      }
-      
-      // Update screening status if callback is provided
-      if (onScreeningAction) {
-        onScreeningAction(entry.ID, aiDecision, aiNotes);
-      }
-      
-      // Update progress
-      const progress = Math.floor((processed / totalToProcess) * 100);
-      setAiProcessingProgress(progress);
-      
-      // Process next entry with delay
-      setTimeout(processNext, 300);
-    };
-    
-    // Start processing
-    setTimeout(processNext, 500);
   };
 
   // Handle abstract update
@@ -284,16 +173,8 @@ const LiteratureTable: React.FC<LiteratureTableProps> = ({
         throw new Error('Failed to update abstract');
       }
       
-      // Update the local state to reflect the change immediately
-      const updatedEntries = filteredEntries.map(entry => {
-        if (entry.ID === id) {
-          return { ...entry, abstract };
-        }
-        return entry;
-      });
-      
-      // Update the entries state directly to force a re-render
-      setFilteredEntries(updatedEntries);
+      // Since filteredEntries is now derived from entries using useMemo,
+      // we can't update it directly. Instead, we'll just refresh the data.
       
       // Show success message
       messageApi.success('Abstract updated successfully');
@@ -352,6 +233,7 @@ const LiteratureTable: React.FC<LiteratureTableProps> = ({
             size="small"
             onClick={() => handleAiScreening(record)}
             style={{ padding: '0 8px' }}
+            className="hover:shadow-md transition-all duration-300"
           />
         </Tooltip>
       </Space>
@@ -364,12 +246,10 @@ const LiteratureTable: React.FC<LiteratureTableProps> = ({
       title: 'Year',
       dataIndex: 'year',
       key: 'year',
+      width: 80,
       sorter: true,
       sortOrder: sortField === 'year' ? sortOrder : null,
-      width: 80,
-      fixed: 'left',
-      ellipsis: true,
-      render: (text: string) => text || 'N/A',
+      render: (year) => year || 'N/A',
     },
     {
       title: 'Title',
@@ -377,42 +257,41 @@ const LiteratureTable: React.FC<LiteratureTableProps> = ({
       key: 'title',
       sorter: true,
       sortOrder: sortField === 'title' ? sortOrder : null,
-      width: 300,
-      ellipsis: { showTitle: false },
-      render: (text: string) => (
-        <Tooltip title={text || 'N/A'} placement="topLeft">
-          <div className="line-clamp-2" style={{ wordWrap: 'break-word', wordBreak: 'break-word', maxHeight: '3em', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {text || 'N/A'}
-          </div>
-        </Tooltip>
-      ),
+      render: (title, record) => {
+        return (
+          <Tooltip title={title} placement="topLeft">
+            <div className="line-clamp-2" style={{ wordWrap: 'break-word', wordBreak: 'break-word', maxHeight: '3em', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {title || 'No Title'}
+            </div>
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'Author(s)',
       dataIndex: 'author',
       key: 'author',
+      width: 200,
       sorter: true,
       sortOrder: sortField === 'author' ? sortOrder : null,
-      width: 200,
-      ellipsis: { showTitle: false },
-      render: (text: string) => (
-        <Tooltip title={text || 'N/A'} placement="topLeft">
-          <div className="line-clamp-2" style={{ wordWrap: 'break-word', wordBreak: 'break-word', maxHeight: '3em', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {text || 'N/A'}
-          </div>
-        </Tooltip>
-      ),
+      render: (author) => {
+        return (
+          <Tooltip title={author} placement="topLeft">
+            <div className="line-clamp-2" style={{ wordWrap: 'break-word', wordBreak: 'break-word', maxHeight: '3em', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {author || 'Unknown Author'}
+            </div>
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'Publication Venue',
-      key: 'venue',
       dataIndex: 'journal',
-      width: 200,
-      ellipsis: { showTitle: false },
+      key: 'journal',
       sorter: true,
       sortOrder: sortField === 'journal' ? sortOrder : null,
-      render: (_: any, record: BibEntry) => {
-        const venue = record.journal || record.booktitle || record.publisher || 'N/A';
+      render: (journal, record) => {
+        const venue = journal || record.booktitle || record.publisher || 'N/A';
         return (
           <Tooltip title={venue} placement="topLeft">
             <div className="line-clamp-2" style={{ wordWrap: 'break-word', wordBreak: 'break-word', maxHeight: '3em', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -474,6 +353,36 @@ const LiteratureTable: React.FC<LiteratureTableProps> = ({
     showTotal: (total: number) => `Total ${total} items`,
   };
 
+  // Handle AI batch processing
+  const handleAIBatchProcessing = () => {
+    if (selectedRowKeys.length === 0) {
+      messageApi.warning('Please select entries to process');
+      return;
+    }
+    
+    setAIModalVisible(true);
+    setAiProcessingStatus('idle');
+    setAiProcessingProgress(0);
+  };
+
+  // Handle AI processing complete
+  const handleAIProcessingComplete = (results: { id: string; status: ScreeningStatus; notes?: string }[]) => {
+    console.log('AI processing complete:', results);
+    
+    // Update entries with AI results
+    if (results.length > 0 && onScreeningAction) {
+      results.forEach(result => {
+        onScreeningAction(result.id, result.status, result.notes);
+      });
+      
+      messageApi.success(`Processed ${results.length} entries with AI`);
+    }
+    
+    // Close modal and reset state
+    setAIModalVisible(false);
+    setSelectedRowKeys([]);
+  };
+
   return (
     <div>
       {contextHolder}
@@ -499,44 +408,67 @@ const LiteratureTable: React.FC<LiteratureTableProps> = ({
             <Option value="all">All Fields</Option>
             <Option value="title">Title</Option>
             <Option value="author">Author</Option>
+            <Option value="journal">Journal/Venue</Option>
             <Option value="year">Year</Option>
-            <Option value="journal">Journal</Option>
-            <Option value="abstract">Abstract</Option>
-            <Option value="keywords">Keywords</Option>
           </Select>
         </div>
-        <div className="flex-shrink-0 flex items-center gap-2">
-          <span>Sort by:</span>
+        <div className="flex-shrink-0">
           <Select 
-            value={sortField} 
+            defaultValue="all" 
             style={{ width: 150 }} 
-            onChange={setSortField}
+            onChange={(value) => {
+              setFilterField(value);
+              setSortField(value);
+            }}
+            placeholder="Filter by status"
           >
-            <Option value="year">Year</Option>
-            <Option value="title">Title</Option>
-            <Option value="author">Author</Option>
-            <Option value="journal">Journal</Option>
-            {screeningType && (
-              <Option value={screeningType === 'title' ? 'title_screening_status' : 'abstract_screening_status'}>
-                Status
-              </Option>
-            )}
+            <Option value="all">All Status</Option>
+            <Option value="pending">Pending</Option>
+            <Option value="included">Included</Option>
+            <Option value="excluded">Excluded</Option>
+            <Option value="maybe">Maybe</Option>
           </Select>
-          <Button 
-            icon={sortOrder === 'ascend' ? <SortAscendingOutlined /> : <SortDescendingOutlined />}
-            onClick={() => setSortOrder(sortOrder === 'ascend' ? 'descend' : 'ascend')}
-          />
-          {showScreeningControls && (
-            <Button 
-              type="primary"
-              icon={<ThunderboltOutlined />}
-              onClick={handleBatchAiProcessing}
-              title="Batch AI Processing"
-            >
-              AI Batch
-            </Button>
-          )}
         </div>
+        
+        {/* Sort buttons */}
+        <div className="flex-shrink-0">
+          <Space>
+            <Tooltip title="Sort Ascending">
+              <Button 
+                icon={<SortAscendingOutlined />} 
+                onClick={() => setSortOrder('ascend')}
+                type={sortOrder === 'ascend' ? 'primary' : 'default'}
+              />
+            </Tooltip>
+            <Tooltip title="Sort Descending">
+              <Button 
+                icon={<SortDescendingOutlined />} 
+                onClick={() => setSortOrder('descend')}
+                type={sortOrder === 'descend' ? 'primary' : 'default'}
+              />
+            </Tooltip>
+          </Space>
+        </div>
+        
+        {/* AI Batch Processing */}
+        {screeningType && onScreeningAction && (
+          <div className="flex-shrink-0 ml-auto">
+            <AIBatchProcessor 
+              screeningType={screeningType || 'title'}
+              entries={entries.filter(entry => selectedRowKeys.includes(entry.ID || ''))}
+              onScreeningAction={(id, status, notes) => {
+                if (onScreeningAction) {
+                  onScreeningAction(id, status, notes);
+                }
+              }}
+              onComplete={() => {
+                setAIModalVisible(false);
+                setSelectedRowKeys([]);
+                if (refreshData) refreshData();
+              }}
+            />
+          </div>
+        )}
       </div>
       
       <Table 
@@ -553,63 +485,75 @@ const LiteratureTable: React.FC<LiteratureTableProps> = ({
           expandedRowRender: (record) => (
             <ExpandableRow 
               record={record} 
-              onUpdateAbstract={handleUpdateAbstract}
+              onUpdateAbstract={(id, abstract) => {
+                handleUpdateAbstract(id, abstract);
+              }}
             />
           ),
         }}
         onChange={handleTableChange}
         size="middle"
         className="literature-table"
+        onRow={(record) => ({
+          onClick: () => {
+            console.log('Row clicked:', record);
+          },
+        })}
       />
       
       {/* AI Processing Modal */}
       <Modal
         title="AI Batch Processing"
-        open={aiProcessingModalVisible}
+        open={aiModalVisible}
         onCancel={() => {
           if (aiProcessingStatus !== 'processing') {
-            setAiProcessingModalVisible(false);
+            setAIModalVisible(false);
           }
         }}
         footer={[
           <Button 
             key="close" 
-            onClick={() => setAiProcessingModalVisible(false)}
+            onClick={() => setAIModalVisible(false)}
             disabled={aiProcessingStatus === 'processing'}
           >
             Close
-          </Button>
+          </Button>,
+          <Button
+            key="process"
+            type="primary"
+            onClick={handleAIBatchProcessing}
+            loading={aiProcessingStatus === 'processing'}
+            disabled={selectedRowKeys.length === 0 || aiProcessingStatus === 'processing'}
+          >
+            Process
+          </Button>,
         ]}
-        width={600}
+        width={700}
       >
-        <div className="py-4">
+        <div className="mb-4">
           <Progress 
             percent={aiProcessingProgress} 
-            status={aiProcessingStatus === 'processing' ? 'active' : 'success'} 
-            strokeWidth={10}
+            status={aiProcessingStatus === 'error' ? 'exception' : 
+                   aiProcessingStatus === 'success' ? 'success' : 'active'} 
+            style={{ display: aiProcessingStatus === 'idle' ? 'none' : 'block' }}
           />
-          <div className="mt-4 mb-2">
-            <Text strong>
-              {aiProcessingStatus === 'idle' && 'Ready to process entries'}
-              {aiProcessingStatus === 'processing' && `Processing entries (${aiProcessingProgress}% complete)`}
-              {aiProcessingStatus === 'complete' && 'Processing complete!'}
-            </Text>
-          </div>
-          <div className="bg-gray-50 p-4 rounded">
-            <Text type="secondary">
-              <p>The AI screening process analyzes the content of each entry to determine its relevance to your research.</p>
-              <ul>
-                <li>Entries with strong positive indicators will be marked as <Tag color="success">included</Tag></li>
-                <li>Entries with strong negative indicators will be marked as <Tag color="error">excluded</Tag></li>
-                <li>Entries with mixed or inconclusive signals will be marked as <Tag color="warning">maybe</Tag> for human review</li>
-              </ul>
-              <p>You can always manually change the AI's decision for any entry.</p>
-            </Text>
-          </div>
         </div>
+        
+        <AIBatchProcessor 
+          screeningType={screeningType || 'title'}
+          entries={entries.filter(entry => selectedRowKeys.includes(entry.ID || ''))}
+          onScreeningAction={(id, status, notes) => {
+            if (onScreeningAction) {
+              onScreeningAction(id, status, notes);
+            }
+          }}
+          onComplete={() => {
+            setAIModalVisible(false);
+            setSelectedRowKeys([]);
+            if (refreshData) refreshData();
+          }}
+        />
       </Modal>
     </div>
   );
 };
-
-export default LiteratureTable;

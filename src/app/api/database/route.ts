@@ -50,6 +50,17 @@ async function initDatabase(): Promise<void> {
       )
     `);
     
+    // Create settings table for AI prompts and API keys
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    console.log('Database tables created successfully');
     return;
   } catch (error) {
     console.error('Error initializing database:', error);
@@ -210,16 +221,38 @@ async function updateScreeningStatus(
   const db = await getDbConnection();
   
   try {
+    console.log(`Server: Updating ${screeningType} screening for entry ${id} to status: ${status}`);
+    console.log('Server: Request payload:', { id, screeningType, status, notes });
+    
     const statusField = screeningType === 'title' ? 'title_screening_status' : 'abstract_screening_status';
     const notesField = screeningType === 'title' ? 'title_screening_notes' : 'abstract_screening_notes';
     
-    await db.run(
-      `UPDATE entries SET ${statusField} = ?, ${notesField} = ? WHERE id = ?`,
+    // First check if the entry exists
+    const entry = await db.get('SELECT id FROM entries WHERE id = ?', [id]);
+    if (!entry) {
+      console.error(`Server: Entry with ID ${id} not found`);
+      throw new Error(`Entry with ID ${id} not found`);
+    }
+    
+    const query = `UPDATE entries SET ${statusField} = ?, ${notesField} = ? WHERE id = ?`;
+    console.log('Server: Executing query:', query);
+    console.log('Server: With parameters:', [status, notes || '', id]);
+    
+    const result = await db.run(
+      query,
       [status, notes || '', id]
     );
+    
+    console.log('Server: Update result:', result);
+    console.log(`Server: Changes made: ${result.changes}`);
+    
+    if (result.changes === 0) {
+      console.warn(`Server: No changes made when updating entry ${id}. Entry might not exist or values unchanged.`);
+    }
   } catch (error) {
-    console.error(`Error updating ${screeningType} screening status:`, error);
-    throw new Error(`Failed to update ${screeningType} screening status`);
+    console.error(`Server: Error updating ${screeningType} screening status:`, error);
+    console.error('Server: Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+    throw new Error(`Failed to update ${screeningType} screening status: ${error instanceof Error ? error.message : 'Unknown error'}`);
   } finally {
     await db.close();
   }
@@ -230,8 +263,23 @@ async function clearDatabase(): Promise<void> {
   const db = await getDbConnection();
   
   try {
+    // Begin transaction
+    await db.run('BEGIN TRANSACTION');
+    
+    // Clear entries table only
     await db.run('DELETE FROM entries');
+    console.log('Entries table cleared');
+    
+    // Don't delete settings as they contain API keys and prompts
+    // If you want to clear everything, uncomment the line below
+    // await db.run('DELETE FROM settings');
+    
+    // Commit transaction
+    await db.run('COMMIT');
+    console.log('Database cleared successfully');
   } catch (error) {
+    // Rollback on error
+    await db.run('ROLLBACK');
     console.error('Error clearing database:', error);
     throw new Error('Failed to clear database');
   } finally {
@@ -287,6 +335,82 @@ async function getDatabaseStats(): Promise<{
   }
 }
 
+// Save AI prompt
+async function saveAIPrompt(screeningType: 'title' | 'abstract', prompt: string): Promise<void> {
+  const db = await getDbConnection();
+  
+  try {
+    // Save prompt to settings table
+    await db.run(
+      `INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)`,
+      [`ai_prompt_${screeningType}`, prompt]
+    );
+  } catch (error) {
+    console.error(`Error saving ${screeningType} prompt:`, error);
+    throw new Error(`Failed to save ${screeningType} prompt`);
+  } finally {
+    await db.close();
+  }
+}
+
+// Get AI prompt
+async function getAIPrompt(screeningType: 'title' | 'abstract'): Promise<string | null> {
+  const db = await getDbConnection();
+  
+  try {
+    // Get prompt from settings table
+    const result = await db.get(
+      `SELECT value FROM settings WHERE key = ?`,
+      [`ai_prompt_${screeningType}`]
+    );
+    
+    return result ? result.value : null;
+  } catch (error) {
+    console.error(`Error getting ${screeningType} prompt:`, error);
+    throw new Error(`Failed to get ${screeningType} prompt`);
+  } finally {
+    await db.close();
+  }
+}
+
+// Save API key
+async function saveAPIKey(service: string, apiKey: string): Promise<void> {
+  const db = await getDbConnection();
+  
+  try {
+    // Save API key to settings table
+    await db.run(
+      `INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)`,
+      [`api_key_${service}`, apiKey]
+    );
+  } catch (error) {
+    console.error(`Error saving ${service} API key:`, error);
+    throw new Error(`Failed to save ${service} API key`);
+  } finally {
+    await db.close();
+  }
+}
+
+// Get API key
+async function getAPIKey(service: string): Promise<string | null> {
+  const db = await getDbConnection();
+  
+  try {
+    // Get API key from settings table
+    const result = await db.get(
+      `SELECT value FROM settings WHERE key = ?`,
+      [`api_key_${service}`]
+    );
+    
+    return result ? result.value : null;
+  } catch (error) {
+    console.error(`Error getting ${service} API key:`, error);
+    throw new Error(`Failed to get ${service} API key`);
+  } finally {
+    await db.close();
+  }
+}
+
 // Helper function to convert a database row to a BibEntry
 function convertRowToBibEntry(row: any): BibEntry {
   return {
@@ -317,118 +441,141 @@ function convertRowToBibEntry(row: any): BibEntry {
 
 // API route handler
 export async function GET(request: NextRequest) {
+  console.log('Database API - GET request received');
+  const { searchParams } = new URL(request.url);
+  const action = searchParams.get('action');
+  
+  console.log('Database API - Action:', action);
+  
   try {
-    const { searchParams } = new URL(request.url);
-    const action = searchParams.get('action');
-    
-    // Initialize database if needed
-    const dbExists = await fs.access(DB_PATH).then(() => true).catch(() => false);
-    if (!dbExists) {
-      await initDatabase();
+    // Check if database file exists
+    try {
+      await fs.access(DB_PATH);
+      console.log('Database API - Database file exists at:', DB_PATH);
+    } catch (error) {
+      console.log('Database API - Database file does not exist, will be created');
     }
     
     switch (action) {
       case 'init':
+        console.log('Database API - Initializing database...');
         await initDatabase();
-        return NextResponse.json({ success: true, message: 'Database initialized' });
-        
+        console.log('Database API - Database initialized successfully');
+        return NextResponse.json({ success: true });
+      
       case 'stats':
+        console.log('Database API - Getting database stats...');
         const stats = await getDatabaseStats();
+        console.log('Database API - Stats retrieved:', stats);
         return NextResponse.json({ success: true, data: stats });
-        
+      
       case 'all':
-        const entries = await getAllEntries();
-        return NextResponse.json({ success: true, data: entries });
-        
+        console.log('Database API - Getting all entries...');
+        const allEntries = await getAllEntries();
+        console.log(`Database API - Retrieved ${allEntries.length} entries`);
+        return NextResponse.json({ success: true, data: allEntries });
+      
       case 'title-screening':
-        const titleEntries = await getTitleScreeningEntries();
-        return NextResponse.json({ success: true, data: titleEntries });
-        
+        console.log('Database API - Getting title screening entries...');
+        const titleScreeningEntries = await getTitleScreeningEntries();
+        console.log(`Database API - Retrieved ${titleScreeningEntries.length} title screening entries`);
+        return NextResponse.json({ success: true, data: titleScreeningEntries });
+      
       case 'abstract-screening':
-        const abstractEntries = await getAbstractScreeningEntries();
-        return NextResponse.json({ success: true, data: abstractEntries });
-        
+        console.log('Database API - Getting abstract screening entries...');
+        const abstractScreeningEntries = await getAbstractScreeningEntries();
+        console.log(`Database API - Retrieved ${abstractScreeningEntries.length} abstract screening entries`);
+        return NextResponse.json({ success: true, data: abstractScreeningEntries });
+      
       case 'included':
+        console.log('Database API - Getting included entries...');
         const includedEntries = await getIncludedEntries();
+        console.log(`Database API - Retrieved ${includedEntries.length} included entries`);
         return NextResponse.json({ success: true, data: includedEntries });
         
-      case 'included-literature':
-        const db = await getDbConnection();
-        
-        // Get entries that are included in either title or abstract screening
-        const includedLiterature = await db.all(`
-          SELECT * FROM entries 
-          WHERE title_screening_status = 'included' 
-          OR abstract_screening_status = 'included'
-        `);
-        
-        return NextResponse.json({ success: true, entries: includedLiterature.map(convertRowToBibEntry) });
-        
-      case 'clear':
-        await clearDatabase();
-        return NextResponse.json({ success: true, message: 'Database cleared' });
-        
-      case 'update-abstract':
-        try {
-          const { id, abstract } = await request.json();
-          
-          if (!id) {
-            return NextResponse.json({ error: 'Missing entry ID' }, { status: 400 });
-          }
-          
-          const db = await getDbConnection();
-          
-          // Update the abstract in the database
-          await db.run(
-            'UPDATE entries SET abstract = ? WHERE id = ?',
-            [abstract, id]
-          );
-          
-          return NextResponse.json({ success: true });
-        } catch (error) {
-          console.error('Error updating abstract:', error);
-          return NextResponse.json({ error: 'Failed to update abstract' }, { status: 500 });
+      case 'getPrompt':
+        console.log('Database API - Getting AI prompt...');
+        const promptType = searchParams.get('type') as 'title' | 'abstract';
+        if (!promptType) {
+          return NextResponse.json({ success: false, message: 'Missing prompt type' }, { status: 400 });
         }
+        const prompt = await getAIPrompt(promptType);
+        console.log(`Database API - Retrieved ${promptType} prompt:`, prompt);
+        return NextResponse.json({ success: true, data: prompt });
         
+      case 'getApiKey':
+        console.log('Database API - Getting API key...');
+        const service = searchParams.get('service');
+        if (!service) {
+          return NextResponse.json({ success: false, message: 'Missing service name' }, { status: 400 });
+        }
+        const apiKey = await getAPIKey(service);
+        console.log(`Database API - Retrieved API key for ${service}`);
+        return NextResponse.json({ success: true, data: apiKey });
+      
       default:
+        console.error('Database API - Invalid action:', action);
         return NextResponse.json({ success: false, message: 'Invalid action' }, { status: 400 });
     }
-  } catch (error: any) {
-    console.error('Database API error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+  } catch (error) {
+    console.error('Database API - Error processing request:', error);
+    if (error instanceof Error) {
+      console.error('Database API - Error message:', error.message);
+      console.error('Database API - Error stack:', error.stack);
+    }
+    return NextResponse.json({ success: false, message: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
 
+// POST handler
 export async function POST(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const action = searchParams.get('action');
+  
   try {
-    const { searchParams } = new URL(request.url);
-    const action = searchParams.get('action');
-    const body = await request.json();
-    
-    // Initialize database if needed
-    const dbExists = await fs.access(DB_PATH).then(() => true).catch(() => false);
-    if (!dbExists) {
+    // Check if database exists
+    try {
+      await fs.access(DB_PATH);
+    } catch (error) {
+      // Create database if it doesn't exist
       await initDatabase();
     }
+    
+    // Parse request body
+    const body = await request.json();
     
     switch (action) {
       case 'save':
         if (!body.entries || !Array.isArray(body.entries) || !body.source) {
           return NextResponse.json({ success: false, message: 'Invalid request body' }, { status: 400 });
         }
-        await saveEntries(body.entries, body.source);
-        return NextResponse.json({ success: true, message: 'Entries saved' });
         
+        await saveEntries(body.entries, body.source);
+        return NextResponse.json({ success: true });
+      
       case 'update-screening':
+      case 'update-status':
+        console.log('Database API - Processing update screening request:', { body, action });
         if (!body.id || !body.screeningType || !body.status) {
+          console.error('Database API - Invalid update screening request:', body);
           return NextResponse.json({ success: false, message: 'Invalid request body' }, { status: 400 });
         }
-        await updateScreeningStatus(body.id, body.screeningType, body.status, body.notes);
-        return NextResponse.json({ success: true, message: 'Screening status updated' });
         
+        try {
+          await updateScreeningStatus(body.id, body.screeningType, body.status, body.notes);
+          console.log('Database API - Successfully updated screening status');
+          return NextResponse.json({ success: true });
+        } catch (error) {
+          console.error('Database API - Error updating screening status:', error);
+          return NextResponse.json({ 
+            success: false, 
+            message: error instanceof Error ? error.message : 'Unknown error updating screening status'
+          }, { status: 500 });
+        }
+      
       case 'update-abstract':
-        if (!body.id) {
-          return NextResponse.json({ error: 'Missing entry ID' }, { status: 400 });
+        if (!body.id || !body.abstract) {
+          return NextResponse.json({ success: false, message: 'Invalid request body' }, { status: 400 });
         }
         
         const db = await getDbConnection();
@@ -441,11 +588,31 @@ export async function POST(request: NextRequest) {
         
         return NextResponse.json({ success: true });
         
+      case 'clear':
+        await clearDatabase();
+        return NextResponse.json({ success: true });
+        
+      case 'savePrompt':
+        if (!body.screeningType || !body.prompt) {
+          return NextResponse.json({ success: false, message: 'Invalid request body' }, { status: 400 });
+        }
+        
+        await saveAIPrompt(body.screeningType, body.prompt);
+        return NextResponse.json({ success: true });
+        
+      case 'saveApiKey':
+        if (!body.service || !body.apiKey) {
+          return NextResponse.json({ success: false, message: 'Invalid request body' }, { status: 400 });
+        }
+        
+        await saveAPIKey(body.service, body.apiKey);
+        return NextResponse.json({ success: true });
+      
       default:
         return NextResponse.json({ success: false, message: 'Invalid action' }, { status: 400 });
     }
   } catch (error: any) {
-    console.error('Database API error:', error);
+    console.error('API error:', error);
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
 }
