@@ -2,6 +2,15 @@
 
 A modern web application for academic literature reviews that allows researchers to search multiple academic databases (Scopus, IEEE, Springer) and import BibTeX files for unified reference management.
 
+![image](https://github.com/user-attachments/assets/eb72c9ad-157c-4f5e-a4b1-4d5a80ff262a)
+
+![image](https://github.com/user-attachments/assets/3b67e21f-b964-40e2-abff-d89299387554)
+
+![image](https://github.com/user-attachments/assets/ec53cac3-07ca-4dc1-93b4-372d09b04b98)
+
+![image](https://github.com/user-attachments/assets/98bfa850-ec68-4ed2-95cf-a80158ec0f84)
+
+
 ## Features
 
 - **Multi-Database Search**: Search Scopus, IEEE, and Springer databases directly from the application
