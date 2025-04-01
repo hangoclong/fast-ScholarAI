@@ -190,6 +190,7 @@ export default function TitleScreeningPage() {
               onScreeningAction={handleScreeningAction}
               showScreeningControls={true}
               refreshData={loadData}
+              setEntries={setEntries}
             />
           )}
         </Card>

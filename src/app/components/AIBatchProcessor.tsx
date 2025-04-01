@@ -128,58 +128,65 @@ const AIBatchProcessor: React.FC<AIBatchProcessorProps> = ({
         setProcessing(false);
         return;
       }
-      
       // Prepare items for batch processing
       const items = pendingEntries.map(entry => ({
-        id: entry.id,
+        id: entry.ID,
         text: extractText(entry)
       }));
-      
-      // Process the entries in batches
-      let batchResults;
-      try {
-        batchResults = await batchProcessWithGemini(prompt, items, screeningType);
-      } catch (error: any) {
-        // Check if the error is related to missing API key
-        if (error.message && error.message.includes('API key')) {
-          messageApi.error('API key is missing. Please set it in the settings.');
-        } else {
-          messageApi.error(`Error during batch processing: ${error.message}`);
-        }
-        console.error('Batch processing error:', error);
-        setProcessingModalVisible(false);
-        setProcessing(false);
-        return;
-      }
-      
-      // Process the results
-      const processedResults = [];
-      let processedCount = 0;
-      
-      console.log('Processing batch results:', batchResults);
-      
-      for (const result of batchResults) {
-        processedCount++;
-        setProgress(Math.floor((processedCount / pendingEntries.length) * 100));
-        
-        console.log('Processing result:', result);
-        
-        if (result.error) {
-          console.error(`Error processing entry ${result.id}:`, result.error);
-          continue;
-        }
-        
-        const { status, notes } = parseAIResponse(result.result);
-        processedResults.push({ id: result.id, status, notes });
-        
-        // Update the entry status
+
+      // Process the entries in batches of 100
+      const batchSize = 100;
+      const numBatches = Math.ceil(items.length / batchSize);
+      let processedResults = [];
+
+      for (let i = 0; i < numBatches; i++) {
+        const batchItems = items.slice(i * batchSize, (i + 1) * batchSize);
+
+        // Process the entries in batches
+        let batchResults;
         try {
-          console.log(`Updating entry ${result.id} with status:`, { status, notes });
-          await onScreeningAction(result.id, status, notes);
-          console.log(`Successfully updated entry ${result.id}`);
+          batchResults = await batchProcessWithGemini(prompt, batchItems, screeningType);
         } catch (error: any) {
-          console.error(`Error updating entry ${result.id}:`, error);
-          console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+          // Check if the error is related to missing API key
+          if (error.message && error.message.includes('API key')) {
+            messageApi.error('API key is missing. Please set it in the settings.');
+          } else {
+            messageApi.error(`Error during batch processing: ${error.message}`);
+          }
+          console.error('Batch processing error:', error);
+          setProcessingModalVisible(false);
+          setProcessing(false);
+          return;
+        }
+
+        // Process the results
+        let processedCount = 0;
+
+        console.log('Processing batch results:', batchResults);
+
+        for (const result of batchResults) {
+          processedCount++;
+          setProgress(Math.floor((processedCount / pendingEntries.length) * 100));
+
+          console.log('Processing result:', result);
+
+          if (result.error) {
+            console.error(`Error processing entry ${result.id}:`, result.error);
+            continue;
+          }
+
+          const { status, notes } = parseAIResponse(result.result);
+          processedResults.push({ id: result.id, status, notes });
+
+          // Update the entry status
+          try {
+            console.log(`Updating entry ${result.id} with status:`, { status, notes });
+            await onScreeningAction(result.id, status, notes);
+            console.log(`Successfully updated entry ${result.id}`);
+          } catch (error: any) {
+            console.error(`Error updating entry ${result.id}:`, error);
+            console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+          }
         }
       }
       

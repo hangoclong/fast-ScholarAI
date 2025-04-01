@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Table, Input, Button, Space, Tag, Tooltip, Select, Typography, Modal, Progress, message } from 'antd';
 import { SearchOutlined, CheckOutlined, CloseOutlined, QuestionOutlined, FilterOutlined, 
-  SortAscendingOutlined, SortDescendingOutlined, RobotOutlined, ThunderboltOutlined } from '@ant-design/icons';
+  SortAscendingOutlined, SortDescendingOutlined, RobotOutlined, ThunderboltOutlined, SettingOutlined } from '@ant-design/icons';
 import type { TableProps, ColumnsType } from 'antd/es/table';
 import { BibEntry, ScreeningStatus } from '../types';
 import ExpandableRow from './ExpandableRow';
@@ -24,6 +24,7 @@ interface LiteratureTableProps {
   showScreeningControls?: boolean;
   showAllEntries?: boolean; // If true, show all entries regardless of status
   refreshData?: () => void; // Function to refresh the data
+  setEntries?: (entries: BibEntry[]) => void;
 }
 
 export default function LiteratureTable({
@@ -34,6 +35,7 @@ export default function LiteratureTable({
   showScreeningControls = false,
   showAllEntries = false,
   refreshData,
+  setEntries,
 }: LiteratureTableProps) {
   console.log('LiteratureTable - received entries:', entries);
   console.log('LiteratureTable - entries length:', entries?.length || 0);
@@ -349,17 +351,12 @@ export default function LiteratureTable({
   const paginationConfig = {
     pageSize: 10,
     showSizeChanger: true,
-    pageSizeOptions: ['10', '20', '50'],
+    pageSizeOptions: ['10', '20', '50', '100'],
     showTotal: (total: number) => `Total ${total} items`,
   };
 
   // Handle AI batch processing
   const handleAIBatchProcessing = () => {
-    if (selectedRowKeys.length === 0) {
-      messageApi.warning('Please select entries to process');
-      return;
-    }
-    
     setAIModalVisible(true);
     setAiProcessingStatus('idle');
     setAiProcessingProgress(0);
@@ -451,24 +448,26 @@ export default function LiteratureTable({
         </div>
         
         {/* AI Batch Processing */}
-        {screeningType && onScreeningAction && (
           <div className="flex-shrink-0 ml-auto">
-            <AIBatchProcessor 
-              screeningType={screeningType || 'title'}
-              entries={entries.filter(entry => selectedRowKeys.includes(entry.ID || ''))}
-              onScreeningAction={(id, status, notes) => {
-                if (onScreeningAction) {
-                  onScreeningAction(id, status, notes);
-                }
-              }}
-              onComplete={() => {
-                setAIModalVisible(false);
-                setSelectedRowKeys([]);
-                if (refreshData) refreshData();
-              }}
-            />
+            <Space>
+              <Button
+                type="primary"
+                icon={<RobotOutlined />}
+                onClick={handleAIBatchProcessing}
+                disabled={entries.length === 0}
+                className="hover:shadow-md transition-all duration-300"
+              >
+                AI Batch Processing
+              </Button>
+              <Button
+                icon={<SettingOutlined />}
+                onClick={() => setAIModalVisible(true)}
+                className="hover:shadow-md transition-all duration-300"
+              >
+                Edit AI Prompt
+              </Button>
+            </Space>
           </div>
-        )}
       </div>
       
       <Table 
@@ -503,7 +502,7 @@ export default function LiteratureTable({
       
       {/* AI Processing Modal */}
       <Modal
-        title="AI Batch Processing"
+        title="AI Prompt Settings"
         open={aiModalVisible}
         onCancel={() => {
           if (aiProcessingStatus !== 'processing') {
@@ -517,16 +516,7 @@ export default function LiteratureTable({
             disabled={aiProcessingStatus === 'processing'}
           >
             Close
-          </Button>,
-          <Button
-            key="process"
-            type="primary"
-            onClick={handleAIBatchProcessing}
-            loading={aiProcessingStatus === 'processing'}
-            disabled={selectedRowKeys.length === 0 || aiProcessingStatus === 'processing'}
-          >
-            Process
-          </Button>,
+          </Button>
         ]}
         width={700}
       >
@@ -538,21 +528,6 @@ export default function LiteratureTable({
             style={{ display: aiProcessingStatus === 'idle' ? 'none' : 'block' }}
           />
         </div>
-        
-        <AIBatchProcessor 
-          screeningType={screeningType || 'title'}
-          entries={entries.filter(entry => selectedRowKeys.includes(entry.ID || ''))}
-          onScreeningAction={(id, status, notes) => {
-            if (onScreeningAction) {
-              onScreeningAction(id, status, notes);
-            }
-          }}
-          onComplete={() => {
-            setAIModalVisible(false);
-            setSelectedRowKeys([]);
-            if (refreshData) refreshData();
-          }}
-        />
       </Modal>
     </div>
   );

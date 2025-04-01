@@ -159,6 +159,7 @@ export default function AbstractScreeningPage() {
               onScreeningAction={handleScreeningAction}
               showScreeningControls={true}
               refreshData={loadData}
+              setEntries={setEntries}
             />
           )}
         </Card>
