@@ -6,7 +6,8 @@ import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import LiteratureTable from '../components/LiteratureTable';
 import { BibEntry, ScreeningStatus } from '../types';
-import { getTitleScreeningEntries, getDatabaseStats, updateScreeningStatus, isDatabaseInitialized, initDatabase } from '../utils/database';
+// Import getAllEntries instead of getTitleScreeningEntries
+import { getAllEntries, getDatabaseStats, updateScreeningStatus, isDatabaseInitialized, initDatabase } from '../utils/database';
 
 const { Title, Text } = Typography;
 const { Header, Content, Footer } = Layout;
@@ -14,6 +15,7 @@ const { Header, Content, Footer } = Layout;
 export default function TitleScreeningPage() {
   const [entries, setEntries] = useState<BibEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [tableUpdateKey, setTableUpdateKey] = useState<number>(0); // Add key state
   const [stats, setStats] = useState<{
     total: number;
     titleScreening: { pending: number; included: number; excluded: number; maybe: number };
@@ -41,11 +43,11 @@ export default function TitleScreeningPage() {
         }
       }
       
-      // Get entries for title screening
-      console.log('Title Screening - Fetching entries...');
-      const entriesData = await getTitleScreeningEntries();
-      console.log('Title Screening - Entries loaded:', entriesData);
-      console.log('Title Screening - Entries count:', entriesData?.length || 0);
+      // Get ALL entries instead of just title screening entries
+      console.log('Title Screening - Fetching ALL entries...');
+      const entriesData = await getAllEntries(); // Use getAllEntries()
+      console.log('Title Screening - ALL Entries loaded:', entriesData);
+      console.log('Title Screening - ALL Entries count:', entriesData?.length || 0);
       console.log('Title Screening - First entry sample:', entriesData?.[0] || 'No entries');
       
       setEntries(entriesData || []);
@@ -90,15 +92,19 @@ export default function TitleScreeningPage() {
       setEntries(prevEntries =>
         prevEntries.map(entry =>
           entry.ID === id
-            ? { ...entry, titleScreening: status, title_screening_notes: notes || entry.title_screening_notes }
+            // CORRECT: Update 'title_screening_status' field
+            ? { ...entry, title_screening_status: status, title_screening_notes: notes ?? entry.title_screening_notes } 
             : entry
         )
       );
-      
+
+      // Force table re-render by changing key
+      setTableUpdateKey(prevKey => prevKey + 1);
+
       // Refresh statistics
       const statsData = await getDatabaseStats();
       setStats(statsData);
-      
+
       // Show success message
       messageApi.success(`Entry marked as ${status}`);
     } catch (error) {
@@ -191,6 +197,7 @@ export default function TitleScreeningPage() {
               onScreeningAction={handleScreeningAction}
               showScreeningControls={true}
               refreshData={loadData}
+              tableKey={tableUpdateKey} // Pass the key down as a prop
             />
           )}
         </Card>

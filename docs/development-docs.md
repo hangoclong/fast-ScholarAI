@@ -20,6 +20,8 @@ The Literature Review Tool is a Next.js application designed to help researchers
 literature-review-tool/
 ├── src/
 │   ├── app/
+│   │   ├── abstract-screening/
+│   │   │   └── page.tsx             # Abstract screening page
 │   │   ├── api/
 │   │   │   ├── bibtex/
 │   │   │   │   ├── scopus/
@@ -28,15 +30,35 @@ literature-review-tool/
 │   │   │   │   │   └── route.ts     # IEEE BibTeX API endpoint
 │   │   │   │   └── springer/
 │   │   │   │       └── route.ts     # Springer BibTeX API endpoint
+│   │   │   ├── database/
+│   │   │   │   └── route.ts         # Database API endpoint
+│   │   │   └── gemini/
+│   │   │       └── route.ts         # Gemini API endpoint
+│   │   ├── components/
+│   │   │   ├── AIBatchProcessor.tsx  # AI batch processor component
+│   │   │   ├── AIPromptDialog.tsx   # AI prompt dialog component
+│   │   │   ├── ExpandableRow.tsx    # Expandable row component
+│   │   │   └── LiteratureTable.tsx  # Literature table component
 │   │   ├── config/
 │   │   │   └── api.ts               # API configuration settings
+│   │   ├── included-literature/
+│   │   │   └── page.tsx             # Included literature page
+│   │   ├── search/
+│   │   │   └── page.tsx             # Search page
+│   │   ├── services/
+│   │   │   └── geminiService.ts     # Gemini service
+│   │   ├── title-screening/
+│   │   │   └── page.tsx             # Title screening page
+│   │   ├── utils/
+│   │   │   ├── antd-compat.ts       # Ant Design compatibility utils
+│   │   │   ├── bibtexParser.ts      # BibTeX parsing utility
+│   │   │   └── database.ts          # Database utility
+│   │   ├── favicon.ico              # Favicon
 │   │   ├── globals.css              # Global styles
 │   │   ├── layout.tsx               # App layout with Ant Design provider
 │   │   ├── page.tsx                 # Main application page
 │   │   ├── providers.tsx            # Ant Design provider setup
-│   │   ├── types.ts                 # TypeScript interfaces
-│   │   └── utils/
-│   │       └── bibtexParser.ts      # BibTeX parsing utility
+│   │   └── types.ts                 # TypeScript interfaces
 ├── docs/
 │   ├── development-docs.md          # Development documentation
 │   └── openAPI.json                 # API specification
@@ -48,7 +70,10 @@ literature-review-tool/
 API settings are centralized in the `src/app/config/api.ts` file, which includes:
 
 - **API_BASE_URL**: The base URL for the API server (default: http://localhost:8000)
-- **API_KEY**: Authentication key for API requests
+- **API_KEY**: Authentication key for API requests. This is a placeholder value. You need to obtain a Gemini API key and set it in the application.
+
+To use the Gemini service, you need to obtain a Gemini API key from Google AI Studio (https://makersuite.google.com/). Once you have the API key, you can save it in the application by navigating to the settings page and entering the key in the Gemini API Key field. The application will store the key in the database.
+
 - **DEFAULT_PARAMS**: Default parameters for each API endpoint
 - **ENDPOINTS**: Path definitions for each API endpoint
 - **API_HEADERS**: API headers, including the `X-API-Key` header for authentication
@@ -94,6 +119,18 @@ The application integrates with three BibTeX API endpoints:
   - `X-API-Key` (required): API authentication key
 - **Response**: BibTeXResponse object with `total_results` and `bibtex` fields
 
+## Gemini Service
+
+The application uses the Gemini service to assist with title and abstract screening. The Gemini service is integrated using the `src/app/services/geminiService.ts` file.
+
+The `processWithGemini` function processes text with the Gemini API for single items. The `batchProcessWithGemini` function processes multiple items with the Gemini API in batch.
+
+Both functions retrieve the Gemini API key using `getAPIKey` from `../utils/database`. They make API requests to the `/api/gemini` Next.js API route.
+
+The API responses are parsed to extract the decision, confidence, and reasoning from the Gemini API.
+
+The AI prompts used by the Gemini service can be customized in the settings page. The prompts are stored in the database and associated with the `title` and `abstract` screening types.
+
 ## BibTeX Parsing
 
 The application uses the `bibtex-parse-js` library to parse BibTeX strings into structured JavaScript objects. The parsing logic is encapsulated in the `parseBibtex` function in `src/app/utils/bibtexParser.ts`.
@@ -121,6 +158,14 @@ The main UI is built with Ant Design components:
    - Update the API settings in `src/app/config/api.ts` if needed
    - Default API server is set to `http://localhost:8000`
    - Default API key is set to `test_key_1`
+
+- To initialize the database, run the following command in the terminal:
+  ```bash
+  npm run init-database
+  ```
+  This will create the `literature-review.db` file in the project root.
+
+- To set the Gemini API key, navigate to the settings page in the application and enter the key in the Gemini API Key field. The application will store the key in the database.
 
 3. **Running the Development Server**:
    ```bash

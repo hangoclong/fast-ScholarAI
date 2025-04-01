@@ -24,6 +24,7 @@ interface LiteratureTableProps {
   showScreeningControls?: boolean;
   showAllEntries?: boolean; // If true, show all entries regardless of status
   refreshData?: () => void; // Function to refresh the data
+  tableKey?: number; // Add prop for the key
 }
 
 export default function LiteratureTable({
@@ -34,6 +35,7 @@ export default function LiteratureTable({
   showScreeningControls = false,
   showAllEntries = false,
   refreshData,
+  tableKey, // Destructure the key prop
 }: LiteratureTableProps) {
   console.log('LiteratureTable - received entries:', entries);
   console.log('LiteratureTable - entries length:', entries?.length || 0);
@@ -44,72 +46,113 @@ export default function LiteratureTable({
   const [filterField, setFilterField] = useState<string>('all');
   const [sortField, setSortField] = useState<string>('year');
   const [sortOrder, setSortOrder] = useState<'ascend' | 'descend'>('descend');
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string>('all'); // Changed state type and initial value
   const [aiModalVisible, setAIModalVisible] = useState<boolean>(false);
   const [aiProcessingStatus, setAiProcessingStatus] = useState<string>('idle');
   const [aiProcessingProgress, setAiProcessingProgress] = useState<number>(0);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [messageApi, contextHolder] = message.useMessage();
-  
-  // Filter entries based on screening type and showAllEntries
-  const filteredByScreeningEntries = useMemo(() => {
-    if (!Array.isArray(entries)) return [];
-    if (showAllEntries) return entries;
-    
-    if (screeningType === 'title') {
-      return entries.filter(entry => !entry.title_screening_status || entry.title_screening_status === 'pending');
-    } else if (screeningType === 'abstract') {
-      return entries.filter(entry => 
-        entry.title_screening_status === 'included' && 
-        (!entry.abstract_screening_status || entry.abstract_screening_status === 'pending')
-      );
-    }
-    
-    return entries;
-  }, [entries, screeningType, showAllEntries]);
-  
-  // Filter entries based on search text
-  const filteredBySearchEntries = useMemo(() => {
-    if (!searchText) return filteredByScreeningEntries;
-    
+
+  console.log('Rendering LiteratureTable - Current statusFilter state:', statusFilter); // Log state value
+
+  // 1. Base Entries (Always start with the full list for filtering)
+  const baseEntries = useMemo(() => {
+    return Array.isArray(entries) ? entries : [];
+  }, [entries]);
+
+  // 2. Apply Search Filter
+  const searchedEntries = useMemo(() => {
+    if (!searchText) return baseEntries;
+
     const searchLower = searchText.toLowerCase();
-    
-    return filteredByScreeningEntries.filter(entry => {
+    return baseEntries.filter(entry => {
       if (filterField === 'all') {
-        // Search in all text fields
         return Object.keys(entry).some(key => {
           const value = entry[key as keyof BibEntry];
           return typeof value === 'string' && value.toLowerCase().includes(searchLower);
         });
       } else {
-        // Search in specific field
         const value = entry[filterField as keyof BibEntry];
         return typeof value === 'string' && value.toLowerCase().includes(searchLower);
       }
     });
-  }, [filteredByScreeningEntries, searchText, filterField]);
-  
-  // Sort entries
-  const sortedEntries = useMemo(() => {
-    if (!filteredBySearchEntries.length) return [];
-    
-    return [...filteredBySearchEntries].sort((a, b) => {
-      const aValue = a[sortField as keyof BibEntry] || '';
-      const bValue = b[sortField as keyof BibEntry] || '';
-      
-      // Special handling for year field
-      if (sortField === 'year') {
-        const yearA = parseInt(String(aValue)) || 0;
-        const yearB = parseInt(String(bValue)) || 0;
-        return sortOrder === 'ascend' ? yearA - yearB : yearB - yearA;
+  }, [baseEntries, searchText, filterField]);
+
+  // 3. Apply Status Filter
+  const statusFilteredEntries = useMemo(() => {
+    if (statusFilter === 'all' || !screeningType) {
+      return searchedEntries; // Pass through if 'All Status' or no screening context
+    }
+
+    const statusKey = screeningType === 'title' ? 'title_screening_status' : 'abstract_screening_status';
+    const targetStatus = statusFilter === 'pending' ? null : statusFilter;
+
+    return searchedEntries.filter(entry => {
+      const entryStatus = entry[statusKey] || null; // Default to null if undefined
+      if (targetStatus === null) { // Check for 'pending' (null or 'pending' string)
+        return !entryStatus || entryStatus === 'pending';
       }
-      
-      // String comparison for other fields
-      const strA = String(aValue).toLowerCase();
-      const strB = String(bValue).toLowerCase();
-      return sortOrder === 'ascend' ? strA.localeCompare(strB) : strB.localeCompare(strA);
+      return entryStatus === targetStatus;
     });
-  }, [filteredBySearchEntries, sortField, sortOrder]);
+  }, [searchedEntries, statusFilter, screeningType]);
+
+  // 4. Apply Screening Filter (Conditionally)
+  const displayEntries = useMemo(() => {
+    // If showing all entries prop is set OR 'All Status' is selected, bypass screening filter
+    if (showAllEntries || statusFilter === 'all') {
+      return statusFilteredEntries;
+    }
+
+    // Otherwise, apply the screening-specific filter
+    if (screeningType === 'title') {
+      return statusFilteredEntries.filter(entry => !entry.title_screening_status || entry.title_screening_status === 'pending');
+    } else if (screeningType === 'abstract') {
+      return statusFilteredEntries.filter(entry =>
+        entry.title_screening_status === 'included' &&
+        (!entry.abstract_screening_status || entry.abstract_screening_status === 'pending')
+      );
+    }
+
+    // Fallback: If no screening type, return the status-filtered list
+    return statusFilteredEntries;
+  }, [statusFilteredEntries, showAllEntries, statusFilter, screeningType]);
+
+  // 5. Sort Entries
+  const sortedEntries = useMemo(() => {
+    if (!displayEntries.length) return []; // Use final display entries
+
+    return [...displayEntries].sort((a, b) => { // Use final display entries
+      const aValue = a[sortField as keyof BibEntry] ?? ''; // Use nullish coalescing
+      const bValue = b[sortField as keyof BibEntry] ?? ''; // Use nullish coalescing
+
+      // Special handling for year field (ensure consistent comparison)
+      if (sortField === 'year') {
+        const yearA = parseInt(String(aValue), 10) || 0; // Specify radix 10
+        const yearB = parseInt(String(bValue), 10) || 0; // Specify radix 10
+        if (yearA !== yearB) {
+          return sortOrder === 'ascend' ? yearA - yearB : yearB - yearA;
+        }
+        // If years are the same, potentially fall through to secondary sort (e.g., title) - optional
+      }
+
+      // String comparison for other fields (case-insensitive)
+      const strA = String(aValue).toLocaleLowerCase(); // Use localeCompare for better i18n
+      const strB = String(bValue).toLocaleLowerCase();
+      if (strA !== strB) {
+        return sortOrder === 'ascend' ? strA.localeCompare(strB) : strB.localeCompare(strA);
+      }
+
+      // Optional: Add secondary sort criteria if primary values are equal
+      // e.g., sort by title if years are the same
+      // if (sortField !== 'title') {
+      //   const titleA = String(a.title || '').toLocaleLowerCase();
+      //   const titleB = String(b.title || '').toLocaleLowerCase();
+      //   return titleA.localeCompare(titleB);
+      // }
+
+      return 0; // Entries are equal based on current criteria
+    });
+  }, [displayEntries, sortField, sortOrder]); // Use final display entries
 
   // Define screening status tag color
   const getStatusColor = (status?: ScreeningStatus) => {
@@ -383,6 +426,9 @@ export default function LiteratureTable({
     setSelectedRowKeys([]);
   };
 
+  // Log the final data being passed to the AntD Table
+  console.log('LiteratureTable - Final sortedEntries for rendering:', sortedEntries);
+
   return (
     <div>
       {contextHolder}
@@ -415,12 +461,10 @@ export default function LiteratureTable({
         <div className="flex-shrink-0">
           <Select 
             defaultValue="all" 
-            style={{ width: 150 }} 
-            onChange={(value) => {
-              setFilterField(value);
-              setSortField(value);
-            }}
+            style={{ width: 150 }}
+            onChange={(value) => setStatusFilter(value)} // Correctly set statusFilter state
             placeholder="Filter by status"
+            value={statusFilter} // Control the selected value
           >
             <Option value="all">All Status</Option>
             <Option value="pending">Pending</Option>
@@ -471,15 +515,17 @@ export default function LiteratureTable({
         )}
       </div>
       
-      <Table 
-        columns={columns} 
-        dataSource={sortedEntries} 
+      <Table
+        key={tableKey} // Use the passed-in key here
+        columns={columns}
+        dataSource={sortedEntries}
         rowKey="ID"
         loading={loading}
         pagination={{
-          pageSize: 10,
+          defaultPageSize: 50, // Set default page size to 50
           showSizeChanger: true,
           pageSizeOptions: ['10', '20', '50', '100'],
+          showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} items`, // Improve total display
         }}
         expandable={{
           expandedRowRender: (record) => (
