@@ -4,6 +4,7 @@ import path from 'path';
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
 import { BibEntry, ScreeningStatus } from '@/app/types';
+import { randomBytes } from 'crypto'; // Import for random suffix generation
 
 // Database path
 const DB_PATH = path.join(process.cwd(), 'literature-review.db');
@@ -70,6 +71,27 @@ async function initDatabase(): Promise<void> {
   }
 }
 
+// Helper function to generate a random alphanumeric suffix
+function generateRandomSuffix(length: number = 2): string {
+  const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  const charactersLength = characters.length;
+  // Use crypto for potentially better randomness if available, fallback to Math.random
+  try {
+    const buffer = randomBytes(length);
+    for (let i = 0; i < length; i++) {
+      result += characters.charAt(buffer[i] % charactersLength);
+    }
+  } catch (e) {
+    // Fallback if crypto is not available (e.g., some environments)
+    console.warn("crypto.randomBytes not available, falling back to Math.random for suffix generation.");
+    for (let i = 0; i < length; i++) {
+      result += characters.charAt(Math.floor(Math.random() * charactersLength));
+    }
+  }
+  return result;
+}
+
 // Save entries to database
 async function saveEntries(entries: BibEntry[], source: string): Promise<void> {
   const db = await getDbConnection();
@@ -78,24 +100,23 @@ async function saveEntries(entries: BibEntry[], source: string): Promise<void> {
     // Begin transaction
     await db.run('BEGIN TRANSACTION');
     
+    const insertStmt = await db.prepare(
+      `INSERT INTO entries (
+        id, entry_type, title, author, year, journal, booktitle, publisher,
+        abstract, doi, url, keywords, pages, volume, issue, source, json_data
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+
     for (const entry of entries) {
-      // Check if entry already exists
-      const existingEntry = await db.get('SELECT id FROM entries WHERE id = ?', entry.ID);
-      
-      if (existingEntry) {
-        // Skip existing entry
-        continue;
-      }
-      
       // Extract common fields
       const { 
-        ID, ENTRYTYPE, title, author, year, journal, booktitle, publisher, 
+        ENTRYTYPE, title, author, year, journal, booktitle, publisher, 
         abstract, doi, url, keywords, pages, volume, number
       } = entry;
+      let currentId = entry.ID; // Use let as ID might change on retry
       
       // Store remaining fields as JSON
       const remainingFields: Record<string, any> = {};
-      
       for (const key in entry) {
         if (![
           'ID', 'ENTRYTYPE', 'title', 'author', 'year', 'journal', 'booktitle', 'publisher',
@@ -105,29 +126,67 @@ async function saveEntries(entries: BibEntry[], source: string): Promise<void> {
           remainingFields[key] = entry[key as keyof BibEntry];
         }
       }
-      
-      // Insert entry
-      await db.run(
-        `INSERT INTO entries (
-          id, entry_type, title, author, year, journal, booktitle, publisher,
-          abstract, doi, url, keywords, pages, volume, issue, source, json_data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          ID, ENTRYTYPE, title, author, year, journal, booktitle, publisher,
-          abstract, doi, url, keywords, pages, volume, number, source, JSON.stringify(remainingFields)
-        ]
-      );
+      const jsonData = JSON.stringify(remainingFields);
+
+      try {
+        // Attempt initial insertion
+        await insertStmt.run(
+          currentId, ENTRYTYPE, title, author, year, journal, booktitle, publisher,
+          abstract, doi, url, keywords, pages, volume, number, source, jsonData
+        );
+      } catch (error: any) {
+        // Check if it's a primary key constraint violation
+        if (error.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || (error.code === 'SQLITE_CONSTRAINT' && error.message.includes('UNIQUE constraint failed: entries.id'))) {
+          console.warn(`Duplicate ID detected: ${currentId}. Attempting insertion with suffix.`);
+          // Generate suffix and retry
+          const suffix = generateRandomSuffix(2);
+          const originalId = currentId; // Keep original for logging if needed
+          currentId = `${originalId}_${suffix}`; // Append suffix
+          
+          try {
+            // Retry insertion with the new ID
+            await insertStmt.run(
+              currentId, ENTRYTYPE, title, author, year, journal, booktitle, publisher,
+              abstract, doi, url, keywords, pages, volume, number, source, jsonData
+            );
+            console.log(`Successfully inserted entry with modified ID: ${currentId} (original: ${originalId})`);
+          } catch (retryError: any) {
+            // If retry also fails (e.g., extremely rare suffix collision or other issue)
+            console.error(`Failed to insert entry with modified ID ${currentId} (original: ${originalId}):`, retryError);
+            // Re-throw the retry error to trigger rollback
+            throw retryError; 
+          }
+        } else {
+          // If it's a different error, re-throw to trigger rollback
+          console.error(`Non-duplicate error during insertion for ID ${currentId}:`, error);
+          throw error;
+        }
+      }
     }
     
+    // Finalize the prepared statement
+    await insertStmt.finalize();
+
     // Commit transaction
     await db.run('COMMIT');
+    console.log(`Successfully saved/updated ${entries.length} entries from source: ${source}`);
+
   } catch (error) {
-    // Rollback transaction on error
-    await db.run('ROLLBACK');
-    console.error('Error saving entries:', error);
-    throw new Error('Failed to save entries');
+    // Rollback transaction on any unhandled error
+    console.error('Error saving entries, rolling back transaction:', error);
+    try {
+      await db.run('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('Error rolling back transaction:', rollbackError);
+    }
+    throw new Error(`Failed to save entries: ${error instanceof Error ? error.message : 'Unknown error'}`);
   } finally {
-    await db.close();
+    // Ensure DB connection is closed
+    try {
+      await db.close();
+    } catch (closeError) {
+      console.error('Error closing database connection:', closeError);
+    }
   }
 }
 
