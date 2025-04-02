@@ -19,8 +19,27 @@ async function initializeDatabase() {
     });
     
     console.log('Database connection opened');
-    
-    // Create entries table if it doesn't exist
+
+    // Function to check if a column exists
+    async function columnExists(tableName, columnName) {
+      // Use db.all() as PRAGMA table_info returns multiple rows
+      const result = await db.all(`PRAGMA table_info(${tableName})`); 
+      // Check if result is an array and if any element has the matching name
+      return Array.isArray(result) && result.some(col => col.name === columnName);
+    }
+
+    // Function to add a column if it doesn't exist
+    async function addColumnIfNotExists(tableName, columnName, columnDefinition) {
+      if (!(await columnExists(tableName, columnName))) {
+        console.log(`Adding column ${columnName} to ${tableName}...`);
+        await db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`);
+        console.log(`Column ${columnName} added.`);
+      } else {
+         console.log(`Column ${columnName} already exists in ${tableName}.`);
+      }
+    }
+
+    // Ensure entries table exists (might be redundant but safe)
     await db.exec(`
       CREATE TABLE IF NOT EXISTS entries (
         id TEXT PRIMARY KEY,
@@ -41,6 +60,10 @@ async function initializeDatabase() {
         source TEXT,
         title_screening_status TEXT DEFAULT 'pending',
         abstract_screening_status TEXT DEFAULT 'pending',
+        deduplication_status TEXT DEFAULT 'pending', -- Added for deduplication stage
+        is_duplicate INTEGER DEFAULT 0,             -- Added flag for duplicate entries
+        duplicate_group_id TEXT,                    -- Added identifier for duplicate groups
+        is_primary_duplicate INTEGER DEFAULT 0,     -- Added flag for the primary entry in a duplicate group
         title_screening_notes TEXT,
         abstract_screening_notes TEXT,
         notes TEXT,
@@ -48,8 +71,15 @@ async function initializeDatabase() {
         json_data TEXT
       )
     `);
-    
-    console.log('Entries table created');
+    console.log('Ensured entries table exists.');
+
+    // Add new columns if they don't exist
+    await addColumnIfNotExists('entries', 'deduplication_status', "TEXT DEFAULT 'pending'");
+    await addColumnIfNotExists('entries', 'is_duplicate', "INTEGER DEFAULT 0");
+    await addColumnIfNotExists('entries', 'duplicate_group_id', "TEXT"); // Default is NULL
+    await addColumnIfNotExists('entries', 'is_primary_duplicate', "INTEGER DEFAULT 0");
+
+    console.log('Checked/Added deduplication columns.');
     
     // Create settings table for AI prompts and API keys
     await db.exec(`

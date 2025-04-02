@@ -192,6 +192,81 @@ export async function updateScreeningStatus(
   }
 }
 
+// Get entries for deduplication review, grouped by duplicate_group_id
+export async function getDeduplicationReviewEntries(): Promise<Record<string, BibEntry[]>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}?action=deduplication-review`);
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.message || 'Failed to get deduplication review entries');
+    }
+    
+    return data.data || {}; // Expects data in { [groupId]: BibEntry[] } format
+  } catch (error) {
+    console.error('Error getting deduplication review entries:', error);
+    throw new Error('Failed to get deduplication review entries');
+  }
+}
+
+// Update deduplication status for multiple entries
+export async function updateDeduplicationStatus(
+  updates: { id: string; status: ScreeningStatus; is_duplicate?: number; is_primary?: number }[]
+): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}?action=update-deduplication`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ updates }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.message || 'Failed to update deduplication status');
+    }
+    console.log('Successfully updated deduplication status via API.');
+  } catch (error) {
+    console.error('Error updating deduplication status:', error);
+    throw new Error(`Failed to update deduplication status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+} // Removed extra brace here
+
+// Trigger the backend deduplication process
+export async function runDeduplicationCheck(): Promise<{ count: number }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}?action=run-deduplication`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}), // No body needed for this action
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.message || 'Failed to run deduplication check');
+    }
+    console.log(`Deduplication check completed. Updated ${data.count} entries.`);
+    return { count: data.count || 0 };
+  } catch (error) {
+    console.error('Error running deduplication check:', error);
+    throw new Error(`Failed to run deduplication check: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+
 // Update the abstract for a specific entry
 export async function updateEntryAbstract(id: string, abstract: string): Promise<boolean> {
   try {

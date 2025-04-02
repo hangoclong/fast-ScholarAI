@@ -2,7 +2,13 @@
 
 import React from 'react';
 import { Menu } from 'antd';
-import { SearchOutlined, FilterOutlined, FileTextOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { 
+  SearchOutlined, 
+  FilterOutlined, 
+  FileTextOutlined, 
+  DatabaseOutlined,
+  CopyOutlined // Added icon for deduplication
+} from '@ant-design/icons';
 import { usePathname, useRouter } from 'next/navigation';
 
 const Navigation: React.FC = () => {
@@ -19,6 +25,11 @@ const Navigation: React.FC = () => {
       key: '/search',
       icon: <SearchOutlined />,
       label: 'Search',
+    },
+    { // Moved Deduplication Review link
+      key: '/deduplication-review',
+      icon: <CopyOutlined />,
+      label: 'Deduplication Review',
     },
     {
       key: '/title-screening',

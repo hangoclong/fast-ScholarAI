@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Layout, Typography, Divider, Alert, Spin, Card, Statistic, Row, Col, Button } from 'antd';
-import { CheckCircleOutlined, DownloadOutlined, LoadingOutlined } from '@ant-design/icons';
+import { Layout, Typography, Divider, Alert, Spin, Card, Statistic, Row, Col, Button, message, Space } from 'antd'; // Added message, Space
+import { CheckCircleOutlined, DownloadOutlined, LoadingOutlined, FileExcelOutlined } from '@ant-design/icons'; // Added FileExcelOutlined
+import * as XLSX from 'xlsx'; // Import xlsx library
 import Navigation from '../components/Navigation';
 import LiteratureTable from '../components/LiteratureTable';
 import { BibEntry } from '../types';
@@ -14,7 +15,9 @@ const { Title, Text } = Typography;
 export default function IncludedLiteraturePage() {
   const [entries, setEntries] = useState<BibEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [exportingExcel, setExportingExcel] = useState<boolean>(false); // State for Excel export loading
   const [error, setError] = useState<string | null>(null);
+  const [messageApi, contextHolder] = message.useMessage(); // For user feedback
   const [stats, setStats] = useState<{
     total: number;
     titleOnly: number;
@@ -86,6 +89,68 @@ export default function IncludedLiteraturePage() {
     URL.revokeObjectURL(url);
   };
 
+  // Export all entries with full details as Excel
+  const exportExcel = async () => {
+    setExportingExcel(true);
+    messageApi.loading({ content: 'Fetching all data for export...', key: 'exportExcelMsg' });
+
+    try {
+      // Fetch ALL entries with ALL details from the new backend endpoint
+      const response = await fetch('/api/database?action=all-details');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch detailed data: ${response.statusText}`);
+      }
+      const result = await response.json();
+      if (!result.success || !Array.isArray(result.data)) {
+        throw new Error(result.message || 'Failed to parse detailed data');
+      }
+      const allDetailedEntries = result.data;
+
+      if (allDetailedEntries.length === 0) {
+        messageApi.warning({ content: 'No entries found in the database to export.', key: 'exportExcelMsg', duration: 2 });
+        setExportingExcel(false);
+        return;
+      }
+
+      messageApi.loading({ content: 'Generating Excel file...', key: 'exportExcelMsg' });
+
+      // Define headers based on database columns (ensure order is logical)
+      const headers = [
+        'id', 'entry_type', 'title', 'author', 'year', 'journal', 'booktitle', 
+        'publisher', 'abstract', 'doi', 'url', 'keywords', 'pages', 'volume', 
+        'issue', 'source', 'title_screening_status', 'abstract_screening_status', 
+        'deduplication_status', 'is_duplicate', 'duplicate_group_id', 
+        'is_primary_duplicate', 'title_screening_notes', 'abstract_screening_notes', 
+        'notes', 'created_at', 'json_data'
+      ];
+
+      // Prepare data rows for Excel sheet (Array of Arrays)
+      const dataForSheet = [
+        headers, // First row is headers
+        ...allDetailedEntries.map((entry: any) => // Explicitly type entry as any here
+          headers.map(header => entry[header] ?? '') // Get value for each header, default to empty string if null/undefined
+        )
+      ];
+
+      // Create worksheet and workbook
+      const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'All Entries');
+
+      // Generate and download the file
+      XLSX.writeFile(wb, 'literature_review_all_entries.xlsx');
+
+      messageApi.success({ content: 'Excel file exported successfully!', key: 'exportExcelMsg', duration: 2 });
+
+    } catch (err: any) {
+      console.error('Error exporting Excel:', err);
+      messageApi.error({ content: `Failed to export Excel: ${err.message}`, key: 'exportExcelMsg', duration: 3 });
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+
   // Load entries on component mount
   useEffect(() => {
     loadEntries();
@@ -93,6 +158,7 @@ export default function IncludedLiteraturePage() {
 
   return (
     <Layout className="min-h-screen">
+      {contextHolder} {/* Render message context holder */}
       <Header className="flex items-center bg-white">
         <Title level={3} className="m-0">Literature Review Tool</Title>
       </Header>
@@ -105,17 +171,27 @@ export default function IncludedLiteraturePage() {
         <div className="bg-white p-6 rounded-md shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <Title level={4}>Included Literature</Title>
-            <Button 
-              type="primary" 
-              icon={<DownloadOutlined />} 
-              onClick={exportBibTeX}
-              disabled={entries.length === 0}
-            >
-              Export BibTeX
-            </Button>
+            <Space> {/* Use Space for button grouping */}
+              <Button 
+                icon={<FileExcelOutlined />} 
+                onClick={exportExcel}
+                loading={exportingExcel}
+                disabled={loading} // Disable if main data is still loading
+              >
+                Export All (Excel)
+              </Button>
+              <Button 
+                type="primary" 
+                icon={<DownloadOutlined />} 
+                onClick={exportBibTeX}
+                disabled={entries.length === 0 || loading} // Disable if no entries or loading
+              >
+                Export Included (BibTeX)
+              </Button>
+            </Space>
           </div>
           
-          {error && <Alert message={error} type="error" className="mb-4" />}
+          {error && <Alert message={`Error loading included literature: ${error}`} type="error" className="mb-4" showIcon />}
           
           {/* Statistics */}
           <Row gutter={[16, 16]} className="mb-4">

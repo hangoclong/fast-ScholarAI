@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react'; // Import useCallback
 import { Card, Typography, Statistic, Row, Col, Button, message, Spin, Layout } from 'antd';
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
 import Link from 'next/link';
@@ -14,6 +14,7 @@ const { Header, Content, Footer } = Layout;
 export default function AbstractScreeningPage() {
   const [entries, setEntries] = useState<BibEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [tableRefreshKey, setTableRefreshKey] = useState<number>(0); // State for forcing table refresh
   const [stats, setStats] = useState<{
     total: number;
     abstractScreening: { pending: number; included: number; excluded: number; maybe: number };
@@ -23,10 +24,11 @@ export default function AbstractScreeningPage() {
   });
   const [messageApi, contextHolder] = message.useMessage();
 
-  // Load entries and statistics
-  const loadData = async () => {
+  // Load entries and statistics (using useCallback for stability if passed as prop)
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
+      setEntries([]); // Clear entries before loading new ones
       
       // Get entries for abstract screening
       const entriesData = await getAbstractScreeningEntries();
@@ -35,13 +37,14 @@ export default function AbstractScreeningPage() {
       // Get database statistics
       const statsData = await getDatabaseStats();
       setStats(statsData);
+      setTableRefreshKey(prevKey => prevKey + 1); // Ensure table refreshes after loading data
     } catch (error) {
       console.error('Error loading data:', error);
       messageApi.error('Failed to load data');
     } finally {
       setLoading(false);
     }
-  };
+  }, [messageApi]); // Add dependencies if needed, messageApi is stable
 
   // Load data on component mount
   useEffect(() => {
@@ -58,7 +61,7 @@ export default function AbstractScreeningPage() {
       setEntries(prevEntries => 
         prevEntries.map(entry => 
           entry.ID === id 
-            ? { ...entry, abstractScreening: status, abstract_screening_notes: notes || entry.abstract_screening_notes } 
+            ? { ...entry, abstract_screening_status: status, abstract_screening_notes: notes || entry.abstract_screening_notes } // Corrected property name
             : entry
         )
       );
@@ -66,6 +69,9 @@ export default function AbstractScreeningPage() {
       // Refresh statistics
       const statsData = await getDatabaseStats();
       setStats(statsData);
+
+      // Force table re-render by updating the key
+      setTableRefreshKey(prevKey => prevKey + 1); 
       
       // Show success message
       messageApi.success(`Entry marked as ${status}`);
@@ -153,6 +159,7 @@ export default function AbstractScreeningPage() {
             </div>
           ) : (
             <LiteratureTable 
+              tableKey={tableRefreshKey} // Pass the key to LiteratureTable
               entries={entries}
               loading={loading}
               screeningType="abstract"

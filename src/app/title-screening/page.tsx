@@ -1,13 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Card, Typography, Statistic, Row, Col, Button, message, Spin, Layout } from 'antd';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Card, Typography, Statistic, Row, Col, Button, message, Spin, Layout, Alert } from 'antd'; // Added Alert import
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
 import Link from 'next/link';
-import LiteratureTable from '../components/LiteratureTable';
+import LiteratureTable from '../components/LiteratureTable'; // Restore LiteratureTable import
 import { BibEntry, ScreeningStatus } from '../types';
-// Import getAllEntries instead of getTitleScreeningEntries
-import { getAllEntries, getDatabaseStats, updateScreeningStatus, isDatabaseInitialized, initDatabase } from '../utils/database';
+import { 
+  getTitleScreeningEntries, // Keep using the function that filters duplicates
+  getDatabaseStats, 
+  updateScreeningStatus, 
+  isDatabaseInitialized, 
+  initDatabase 
+} from '../utils/database';
 
 const { Title, Text } = Typography;
 const { Header, Content, Footer } = Layout;
@@ -15,90 +20,66 @@ const { Header, Content, Footer } = Layout;
 export default function TitleScreeningPage() {
   const [entries, setEntries] = useState<BibEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [tableUpdateKey, setTableUpdateKey] = useState<number>(0); // Add key state
+  const [tableUpdateKey, setTableUpdateKey] = useState<number>(0); // Keep key state for refresh
   const [stats, setStats] = useState<{
     total: number;
     titleScreening: { pending: number; included: number; excluded: number; maybe: number };
+    abstractScreening: { pending: number; included: number; excluded: number; maybe: number }; // Keep abstract stats
   }>({ 
     total: 0, 
-    titleScreening: { pending: 0, included: 0, excluded: 0, maybe: 0 } 
+    titleScreening: { pending: 0, included: 0, excluded: 0, maybe: 0 },
+    abstractScreening: { pending: 0, included: 0, excluded: 0, maybe: 0 } 
   });
   const [messageApi, contextHolder] = message.useMessage();
 
   // Load entries and statistics
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
+      // Check if database is initialized (optional)
+      // const isInitialized = await isDatabaseInitialized(); ...
       
-      // Check if database is initialized
-      const isInitialized = await isDatabaseInitialized();
-      console.log('Title Screening - Database initialized:', isInitialized);
-      
-      if (!isInitialized) {
-        console.log('Title Screening - Initializing database...');
-        const initResult = await initDatabase();
-        console.log('Title Screening - Database initialization result:', initResult);
-        if (!initResult) {
-          throw new Error('Failed to initialize database');
-        }
-      }
-      
-      // Get ALL entries instead of just title screening entries
-      console.log('Title Screening - Fetching ALL entries...');
-      const entriesData = await getAllEntries(); // Use getAllEntries()
-      console.log('Title Screening - ALL Entries loaded:', entriesData);
-      console.log('Title Screening - ALL Entries count:', entriesData?.length || 0);
-      console.log('Title Screening - First entry sample:', entriesData?.[0] || 'No entries');
-      
+      // Get entries for title screening (already filters duplicates)
+      const entriesData = await getTitleScreeningEntries(); 
       setEntries(entriesData || []);
       
       // Get database statistics
       const statsData = await getDatabaseStats();
       setStats(statsData);
+
     } catch (error) {
       console.error('Error loading data:', error);
-      // Log more details about the error
-      if (error instanceof Error) {
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
-      } else {
-        console.error('Unknown error type:', typeof error);
-      }
       messageApi.error(`Failed to load data: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
-  };
+  }, [messageApi]); // Added messageApi dependency
 
   // Load data on component mount
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]); // Use loadData as dependency
 
-  // Debug entries after state update
-  useEffect(() => {
-    console.log('Title Screening - Entries state updated:', entries);
-    console.log('Title Screening - Entries state length:', entries.length);
-  }, [entries]);
-
-  // Handle screening action
+  // Handle screening action (passed to LiteratureTable)
   const handleScreeningAction = async (id: string, status: ScreeningStatus, notes?: string) => {
     try {
-      console.log('handleScreeningAction - id:', id, 'status:', status, 'notes:', notes);
       // Update screening status in database
       await updateScreeningStatus(id, 'title', status, notes);
 
-      // Update local state to reflect the change
+      // Update local state to reflect the change (important for stats refresh)
+      // This might cause a slight delay in visual update within LiteratureTable 
+      // if it doesn't re-fetch internally, but ensures stats are correct.
+      // Alternatively, LiteratureTable could handle its own state update + callback.
+      // For now, we update the parent state and trigger a refresh via key.
       setEntries(prevEntries =>
         prevEntries.map(entry =>
           entry.ID === id
-            // CORRECT: Update 'title_screening_status' field
             ? { ...entry, title_screening_status: status, title_screening_notes: notes ?? entry.title_screening_notes } 
             : entry
         )
       );
 
-      // Force table re-render by changing key
+      // Force table re-render by changing key (if LiteratureTable uses it)
       setTableUpdateKey(prevKey => prevKey + 1);
 
       // Refresh statistics
@@ -117,6 +98,7 @@ export default function TitleScreeningPage() {
     <Layout className="min-h-screen">
       {contextHolder}
       
+      {/* Keep original Header structure */}
       <Header className="flex items-center" style={{ background: '#e6f7ff' }}>
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center">
@@ -140,6 +122,7 @@ export default function TitleScreeningPage() {
       </Header>
       
       <Content className="p-6">
+        {/* Keep original Stats Card */}
         <div className="mb-6">
           <Card className="shadow-md hover:shadow-lg transition-all duration-300">
             <Row gutter={16}>
@@ -152,14 +135,14 @@ export default function TitleScreeningPage() {
               </Col>
               <Col span={6}>
                 <Statistic 
-                  title="Pending" 
+                  title="Pending Title Review" // Updated title for clarity
                   value={stats.titleScreening.pending} 
                   loading={loading} 
                 />
               </Col>
               <Col span={6}>
                 <Statistic 
-                  title="Included" 
+                  title="Included (Title)" // Updated title for clarity
                   value={stats.titleScreening.included} 
                   loading={loading}
                   valueStyle={{ color: '#52c41a' }} 
@@ -167,7 +150,7 @@ export default function TitleScreeningPage() {
               </Col>
               <Col span={6}>
                 <Statistic 
-                  title="Excluded" 
+                  title="Excluded (Title)" // Updated title for clarity
                   value={stats.titleScreening.excluded} 
                   loading={loading}
                   valueStyle={{ color: '#ff4d4f' }} 
@@ -177,6 +160,7 @@ export default function TitleScreeningPage() {
           </Card>
         </div>
         
+        {/* Keep original Main Card with LiteratureTable */}
         <Card className="shadow-md hover:shadow-lg transition-all duration-300">
           <div className="mb-4">
             <Text>
@@ -189,22 +173,26 @@ export default function TitleScreeningPage() {
             <div className="flex justify-center items-center p-8">
               <Spin size="large" />
             </div>
+          ) : entries.length === 0 ? (
+             <Alert message="No entries found requiring title screening." type="info" showIcon />
           ) : (
+            // Use LiteratureTable again
             <LiteratureTable 
               entries={entries}
               loading={loading}
               screeningType="title"
               onScreeningAction={handleScreeningAction}
               showScreeningControls={true}
-              refreshData={loadData}
+              refreshData={loadData} // Pass loadData for potential internal refresh in LiteratureTable
               tableKey={tableUpdateKey} // Pass the key down as a prop
             />
           )}
         </Card>
       </Content>
       
+      {/* Keep original Footer */}
       <Footer style={{ textAlign: 'center', background: '#e6f7ff' }}>
-        Literature Review Tool {new Date().getFullYear()}
+        Literature Review Tool ©{new Date().getFullYear()}
       </Footer>
     </Layout>
   );

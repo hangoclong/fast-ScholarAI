@@ -96,32 +96,17 @@ export default function LiteratureTable({
     });
   }, [searchedEntries, statusFilter, screeningType]);
 
-  // 4. Apply Screening Filter (Conditionally)
+  // 4. Final Display Entries (No additional screening filter needed here)
+  // The statusFilteredEntries already correctly filters based on the dropdown selection.
   const displayEntries = useMemo(() => {
-    // If showing all entries prop is set OR 'All Status' is selected, bypass screening filter
-    if (showAllEntries || statusFilter === 'all') {
-      return statusFilteredEntries;
-    }
-
-    // Otherwise, apply the screening-specific filter
-    if (screeningType === 'title') {
-      return statusFilteredEntries.filter(entry => !entry.title_screening_status || entry.title_screening_status === 'pending');
-    } else if (screeningType === 'abstract') {
-      return statusFilteredEntries.filter(entry =>
-        entry.title_screening_status === 'included' &&
-        (!entry.abstract_screening_status || entry.abstract_screening_status === 'pending')
-      );
-    }
-
-    // Fallback: If no screening type, return the status-filtered list
     return statusFilteredEntries;
-  }, [statusFilteredEntries, showAllEntries, statusFilter, screeningType]);
+  }, [statusFilteredEntries]); // Dependency is just the result of status filtering
 
   // 5. Sort Entries
   const sortedEntries = useMemo(() => {
-    if (!displayEntries.length) return []; // Use final display entries
+    if (!displayEntries.length) return []; // Use the displayEntries directly
 
-    return [...displayEntries].sort((a, b) => { // Use final display entries
+    return [...displayEntries].sort((a, b) => { // Sort the displayEntries
       const aValue = a[sortField as keyof BibEntry] ?? ''; // Use nullish coalescing
       const bValue = b[sortField as keyof BibEntry] ?? ''; // Use nullish coalescing
 
