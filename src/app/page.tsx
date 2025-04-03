@@ -112,7 +112,7 @@ export default function Home() {
 
           <Row gutter={[16, 16]} className="mb-4">
             <Col xs={24} sm={12} md={6}>
-              <Card hoverable className="h-full transition-all duration-300 hover:shadow-lg">
+              <Card hoverable className="h-full transition-all duration-300 hover:shadow-lg" style={{ backgroundColor: '#eff6ff' }}>
                 <Statistic
                   title="Total Entries"
                   value={stats.total}
@@ -123,7 +123,7 @@ export default function Home() {
               </Card>
             </Col>
             <Col xs={24} sm={12} md={6}>
-              <Card hoverable className="h-full transition-all duration-300 hover:shadow-lg">
+              <Card hoverable className="h-full transition-all duration-300 hover:shadow-lg" style={{ backgroundColor: '#eff6ff' }}>
                 <Statistic
                   title="Title Screening Pending"
                   value={stats.titleScreening.pending}
@@ -134,7 +134,7 @@ export default function Home() {
               </Card>
             </Col>
             <Col xs={24} sm={12} md={6}>
-              <Card hoverable className="h-full transition-all duration-300 hover:shadow-lg">
+              <Card hoverable className="h-full transition-all duration-300 hover:shadow-lg" style={{ backgroundColor: '#eff6ff' }}>
                 <Statistic
                   title="Abstract Screening Pending"
                   value={stats.abstractScreening.pending}
@@ -145,7 +145,7 @@ export default function Home() {
               </Card>
             </Col>
             <Col xs={24} sm={12} md={6}>
-              <Card hoverable className="h-full transition-all duration-300 hover:shadow-lg">
+              <Card hoverable className="h-full transition-all duration-300 hover:shadow-lg" style={{ backgroundColor: '#eff6ff' }}>
                 <Statistic
                   title="Included Literature"
                   value={stats.abstractScreening.included}
@@ -164,6 +164,7 @@ export default function Home() {
               <Card
                 hoverable
                 className="text-center transition-all duration-300 hover:shadow-lg hover:border-blue-400"
+                style={{ backgroundColor: '#eff6ff' }}
                 onClick={() => router.push('/search')}
               >
                 <SearchOutlined style={{ fontSize: '28px', color: '#1890ff' }} />
@@ -174,6 +175,7 @@ export default function Home() {
               <Card
                 hoverable
                 className="text-center transition-all duration-300 hover:shadow-lg hover:border-blue-400"
+                style={{ backgroundColor: '#eff6ff' }}
                 onClick={() => router.push('/title-screening')}
               >
                 <FilterOutlined style={{ fontSize: '28px', color: '#1890ff' }} />
@@ -184,6 +186,7 @@ export default function Home() {
               <Card
                 hoverable
                 className="text-center transition-all duration-300 hover:shadow-lg hover:border-blue-400"
+                style={{ backgroundColor: '#eff6ff' }}
                 onClick={() => router.push('/abstract-screening')}
               >
                 <FileTextOutlined style={{ fontSize: '28px', color: '#1890ff' }} />
@@ -194,6 +197,7 @@ export default function Home() {
               <Card
                 hoverable
                 className="text-center transition-all duration-300 hover:shadow-lg hover:border-blue-400"
+                style={{ backgroundColor: '#eff6ff' }}
                 onClick={() => router.push('/included-literature')}
               >
                 <CheckCircleOutlined style={{ fontSize: '28px', color: '#1890ff' }} />

@@ -439,28 +439,61 @@ export async function getAIPrompt(screeningType: 'title' | 'abstract'): Promise<
   }
 }
 
-// Get API key from database
-export async function getAPIKey(service: 'gemini'): Promise<string> {
+// Get API keys from database (returns an array of strings)
+export async function getAPIKey(service: 'gemini'): Promise<string[]> {
   try {
     const response = await fetch(`${API_BASE_URL}?action=getApiKey&service=${service}`);
     const data = await response.json();
-    
+
     if (!data.success) {
-      throw new Error(data.message || `Failed to get ${service} API key`);
+      // It might just mean the key hasn't been set yet, which isn't necessarily an error here.
+      console.log(`No API key found for ${service} or failed to retrieve.`);
+      return []; 
     }
-    
+
     // Check if API key is in data.data or data.apiKey
-    const apiKey = data.data || data.apiKey || '';
-    return apiKey;
+    const storedValue = data.data || data.apiKey || '';
+
+    if (!storedValue) {
+      return [];
+    }
+
+    // Attempt to parse the stored value as a JSON array
+    try {
+      const keysArray = JSON.parse(storedValue);
+      if (Array.isArray(keysArray) && keysArray.every(key => typeof key === 'string')) {
+        return keysArray.filter(key => key.trim().length > 0); // Filter out empty strings
+      } else {
+        // If it's not a valid array of strings, treat it as potentially a single legacy key
+        // or invalid data. Return it as a single-element array if it's a non-empty string.
+        if (typeof storedValue === 'string' && storedValue.trim().length > 0) {
+           console.warn(`Stored API key for ${service} is not a JSON array. Treating as single key.`);
+           return [storedValue.trim()];
+        }
+        return []; // Return empty if parsing fails or it's not an array
+      }
+    } catch (parseError) {
+      // If JSON parsing fails, it might be a single legacy key.
+       if (typeof storedValue === 'string' && storedValue.trim().length > 0) {
+           console.warn(`Failed to parse stored API key for ${service} as JSON. Treating as single key. Error: ${parseError}`);
+           return [storedValue.trim()];
+       }
+      console.error(`Error parsing stored API key for ${service}:`, parseError);
+      return [];
+    }
   } catch (error) {
     console.error(`Error getting ${service} API key:`, error);
-    return '';
+    return []; // Return empty array on fetch error
   }
 }
 
-// Save API key to database
-export async function saveAPIKey(service: 'gemini', apiKey: string): Promise<void> {
+// Save API keys to database (accepts an array of strings)
+export async function saveAPIKey(service: 'gemini', apiKeys: string[]): Promise<void> {
   try {
+    // Ensure apiKeys is an array before stringifying
+    const keysToSave = Array.isArray(apiKeys) ? apiKeys : [];
+    const valueToStore = JSON.stringify(keysToSave);
+
     const response = await fetch(`${API_BASE_URL}?action=saveApiKey`, {
       method: 'POST',
       headers: {
@@ -468,17 +501,17 @@ export async function saveAPIKey(service: 'gemini', apiKey: string): Promise<voi
       },
       body: JSON.stringify({
         service,
-        apiKey,
+        apiKey: valueToStore, // Store the JSON stringified array
       }),
     });
-    
+
     const data = await response.json();
-    
+
     if (!data.success) {
-      throw new Error(data.message || `Failed to save ${service} API key`);
+      throw new Error(data.message || `Failed to save ${service} API keys`);
     }
   } catch (error) {
-    console.error(`Error saving ${service} API key:`, error);
-    throw new Error(`Failed to save ${service} API key`);
+    console.error(`Error saving ${service} API keys:`, error);
+    throw new Error(`Failed to save ${service} API keys`);
   }
 }

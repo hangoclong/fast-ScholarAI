@@ -49,19 +49,19 @@ const AIPromptDialog: React.FC<AIPromptDialogProps> = ({
           'Based on the abstract "{text}", determine if this paper should be included in a literature review. Consider methodology, findings, and relevance to the research topic.\n\nProvide your response in JSON format with the following structure:\n{\n  "decision": "INCLUDE", "EXCLUDE", or "MAYBE",\n  "confidence": a number between 0 and 1,\n  "reasoning": "Your detailed analysis and reasoning for this decision"\n}\n\nEnsure your response is valid JSON that can be parsed directly.';
       }
       
-      // Get the API key
-      let apiKey = '';
+      // Get the API keys (now returns an array)
+      let apiKeys: string[] = [];
       try {
-        apiKey = await getAPIKey('gemini');
+        apiKeys = await getAPIKey('gemini'); // Expecting getAPIKey to return string[]
       } catch (error) {
-        // API key might not exist yet, that's okay
-        console.log('No API key found, will prompt user to set one');
+        // API keys might not exist yet, that's okay
+        console.log('No API keys found, will prompt user to set them');
       }
-      
+
       // Set the form values
       form.setFieldsValue({
         prompt,
-        apiKey,
+        apiKeys: apiKeys.join('\n'), // Join array into newline-separated string for TextArea
       });
     } catch (error) {
       messageApi.error('Failed to load prompt settings');
@@ -81,13 +81,27 @@ const AIPromptDialog: React.FC<AIPromptDialogProps> = ({
       
       // Save the prompt
       await saveAIPrompt(screeningType, values.prompt);
-      
-      // Save the API key if provided
-      if (values.apiKey) {
-        await saveAPIKey('gemini', values.apiKey);
+      // Save the API keys if provided
+      if (values.apiKeys) {
+        // Split the string by newlines, trim whitespace, and filter out empty lines
+        const keysArray = values.apiKeys
+          .split('\n')
+          .map((key: string) => key.trim())
+          .filter((key: string) => key.length > 0);
+          
+        if (keysArray.length > 0) {
+            await saveAPIKey('gemini', keysArray); // Expecting saveAPIKey to accept string[]
+        } else {
+            // Optionally handle the case where the user cleared all keys
+            await saveAPIKey('gemini', []); // Save an empty array
+            messageApi.info('API keys cleared.');
+        }
+      } else {
+         await saveAPIKey('gemini', []); // Save an empty array if field is empty
+         messageApi.info('API keys cleared.');
       }
-      
-      messageApi.success('Prompt settings saved successfully');
+
+      messageApi.success('Prompt and API key settings saved successfully');
       onSave();
       onClose();
     } catch (error) {
@@ -146,18 +160,33 @@ const AIPromptDialog: React.FC<AIPromptDialogProps> = ({
           <Title level={5}>Gemini API Key</Title>
           <Text type="secondary">
             Enter your Gemini API key to use for AI processing. You can get one from
-            <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer"> Google AI Studio</a>.
+            <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer"> Google AI Studio</a>. Enter one key per line.
           </Text>
           <Form.Item
-            name="apiKey"
-            rules={[{ required: true, message: 'Please enter your Gemini API key' }]}
+            name="apiKeys" // Changed name from apiKey to apiKeys
+            rules={[
+              { 
+                required: true, 
+                message: 'Please enter at least one Gemini API key' 
+              },
+              // Custom validator to ensure at least one non-empty line
+              {
+                validator: (_, value) => {
+                  if (!value || value.split('\n').map((k: string) => k.trim()).filter((k: string) => k.length > 0).length === 0) {
+                    return Promise.reject(new Error('Please enter at least one valid Gemini API key'));
+                  }
+                  return Promise.resolve();
+                },
+              }
+            ]}
           >
-            <Input.Password 
-              placeholder="Enter your Gemini API key"
+            <TextArea // Changed from Input.Password to TextArea
+              rows={4} // Adjust rows as needed
+              placeholder="Enter your Gemini API keys, one per line"
               style={{ marginTop: '8px' }}
             />
           </Form.Item>
-          
+
           <Form.Item>
             <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button onClick={onClose}>Cancel</Button>
