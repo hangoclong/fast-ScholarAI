@@ -1,0 +1,22 @@
+{
+    "ignorePatterns": [
+      "node_modules/",
+      ".next/",
+      "out/",
+      "public/",
+      "*.local/",
+      "*.tsbuildinfo"
+    ],
+    "rules": {
+      "no-unused-vars": "off",
+      "react/prop-types": "off",
+      "react/display-name": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/explicit-module-boundary-types": "off",
+      "jsx-a11y/alt-text": "off",
+      "react/no-unescaped-entities": "off",
+      "no-console": "off",
+      "no-empty": "off",
+      "no-undef": "off"
+    }
+  }

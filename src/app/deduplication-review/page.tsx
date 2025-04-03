@@ -336,7 +336,7 @@ const DeduplicationReviewPage: React.FC = () => {
         <Card bordered={false}>
           {/* Updated instruction text */}
           <Text style={{ display: 'block', marginBottom: 16 }}>
-            Review potential duplicate entries below, grouped by similarity (DOI or Title). Use the checkbox in the 'Decision' column to mark entries you wish to 'Keep'. You can keep multiple entries per group. Entries left unchecked will be marked as duplicates. Click 'Save Decisions' to finalize.
+            Review potential duplicate entries below, grouped by similarity (DOI or Title). Use the checkbox in the Decision column to mark entries you wish to Keep. You can keep multiple entries per group. Entries left unchecked will be marked as duplicates. Click Save Decisions to finalize.
           </Text>
           <Space style={{ marginBottom: 16 }}>
             <Button
