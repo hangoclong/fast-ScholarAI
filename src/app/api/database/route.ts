@@ -565,34 +565,76 @@ function convertRowToBibEntry(row: any): BibEntry {
   };
 }
 
-// Get entries for deduplication review (grouped by duplicate_group_id)
-async function getDeduplicationEntries(): Promise<Record<string, BibEntry[]>> {
+// Get entries for deduplication review (grouped by duplicate_group_id, paginated)
+async function getDeduplicationEntries(page: number = 1, pageSize: number = 50): Promise<{ groups: Record<string, BibEntry[]>, totalGroups: number }> {
   const db = await getDbConnection();
   try {
-    // Fetch entries that are part of a duplicate group and potentially pending review
-    // Order by group ID, then potentially by abstract length descending to prioritize richer entries
-    const rows = await db.all(`
-      SELECT * FROM entries 
+    const offset = (page - 1) * pageSize;
+
+    // Query 1: Get total count of distinct pending groups
+    const totalResult = await db.get(`
+      SELECT COUNT(DISTINCT duplicate_group_id) as count 
+      FROM entries 
+      WHERE duplicate_group_id IS NOT NULL 
+      AND deduplication_status = 'pending'
+    `);
+    const totalGroups = totalResult?.count || 0;
+
+    if (totalGroups === 0) {
+      return { groups: {}, totalGroups: 0 };
+    }
+
+    // Query 2: Get paginated list of distinct pending group IDs
+    const groupIdsResult = await db.all(`
+      SELECT DISTINCT duplicate_group_id 
+      FROM entries 
       WHERE duplicate_group_id IS NOT NULL 
       AND deduplication_status = 'pending' 
-      ORDER BY duplicate_group_id, LENGTH(abstract) DESC, id
-    `);
+      ORDER BY duplicate_group_id 
+      LIMIT ? OFFSET ?
+    `, [pageSize, offset]);
+    
+    console.log(`[getDeduplicationEntries] Raw groupIdsResult for page ${page}:`, JSON.stringify(groupIdsResult)); // Log raw result
+    const groupIds = groupIdsResult.map(row => row.duplicate_group_id);
+    console.log(`[getDeduplicationEntries] Mapped groupIds for page ${page}:`, JSON.stringify(groupIds)); // Log mapped IDs
 
+    if (groupIds.length === 0) {
+      console.warn(`[getDeduplicationEntries] No group IDs found for page ${page}, pageSize ${pageSize}, offset ${offset}. Returning empty.`); // Log empty case
+      // This might happen if page number is out of bounds, return empty but correct total
+      return { groups: {}, totalGroups: totalGroups };
+    }
+
+    // Query 3: Fetch all pending entries for the selected group IDs
+    // Use placeholder string for IN clause
+    const placeholders = groupIds.map(() => '?').join(',');
+    const rows = await db.all(`
+      SELECT * FROM entries 
+      WHERE duplicate_group_id IN (${placeholders})
+      AND deduplication_status = 'pending' 
+       ORDER BY duplicate_group_id, LENGTH(abstract) DESC, id
+     `, groupIds);
+     
+    console.log(`[getDeduplicationEntries] Query 3 (fetch entries) returned ${rows.length} rows for page ${page}.`); // Log row count
+
+    // Group the results
     const groupedEntries: Record<string, BibEntry[]> = {};
     for (const row of rows) {
+      // console.log(`[getDeduplicationEntries] Processing row with ID: ${row.id}, Group ID: ${row.duplicate_group_id}`); // Optional: Log each row being processed
       const entry = convertRowToBibEntry(row);
       const groupId = entry.duplicate_group_id;
-      if (groupId) {
+      if (groupId) { // Should always be true based on query
         if (!groupedEntries[groupId]) {
           groupedEntries[groupId] = [];
         }
         groupedEntries[groupId].push(entry);
-      }
-    }
-    return groupedEntries;
+       }
+     }
+     
+    console.log(`[getDeduplicationEntries] Final groupedEntries object for page ${page} has ${Object.keys(groupedEntries).length} keys.`); // Log final grouped object size
+    return { groups: groupedEntries, totalGroups: totalGroups };
   } catch (error) {
-    console.error('Error getting deduplication entries:', error);
-    throw new Error('Failed to get deduplication entries');
+    console.error('Error getting paginated deduplication entries:', error);
+    throw new Error('Failed to get paginated deduplication entries');
   } finally {
     await db.close();
   }
@@ -794,11 +836,15 @@ export async function GET(request: NextRequest) {
         console.log(`Database API - Retrieved API key for ${service}`);
         return NextResponse.json({ success: true, data: apiKey });
 
-      case 'deduplication-review': // New action
-        console.log('Database API - Getting deduplication review entries...');
-        const deduplicationEntries = await getDeduplicationEntries();
-        console.log(`Database API - Retrieved ${Object.keys(deduplicationEntries).length} duplicate groups`);
-        return NextResponse.json({ success: true, data: deduplicationEntries });
+      case 'deduplication-review': // Updated action for pagination
+        console.log('Database API - Getting deduplication review entries (paginated)...');
+        const page = parseInt(searchParams.get('page') || '1', 10);
+        const pageSize = parseInt(searchParams.get('pageSize') || '50', 10);
+        console.log(`Database API - Page: ${page}, PageSize: ${pageSize}`);
+        const { groups, totalGroups } = await getDeduplicationEntries(page, pageSize);
+        console.log(`Database API - Retrieved ${Object.keys(groups).length} duplicate groups for page ${page}, total groups: ${totalGroups}`);
+        // Return data in a structure that includes pagination info
+        return NextResponse.json({ success: true, data: { groups, totalGroups } }); 
 
       case 'all-details': // New action for comprehensive export data
         console.log('Database API - Getting all entries with details...');

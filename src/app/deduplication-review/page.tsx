@@ -16,10 +16,11 @@ import {
   Card,
   Row,
   Col,
-  Statistic
+  Statistic,
+  Pagination // Import Pagination component
 } from 'antd';
 import type { CheckboxChangeEvent } from 'antd/es/checkbox'; // Import Checkbox event type
-import type { TableProps } from 'antd';
+import type { TableProps, TablePaginationConfig } from 'antd'; // Import TablePaginationConfig
 import { StarFilled, ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { BibEntry, ScreeningStatus } from '../types';
@@ -61,6 +62,13 @@ const DeduplicationReviewPage: React.FC = () => {
   const [saving, setSaving] = useState<boolean>(false);
   const [runningCheck, setRunningCheck] = useState<boolean>(false);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({}); // Key: entry.ID
+  const [pagination, setPagination] = useState<TablePaginationConfig>({
+    current: 1,
+    pageSize: 50, // Default page size
+    total: 0,
+    pageSizeOptions: ['50', '100', '200'],
+    showSizeChanger: true,
+  });
   // Use the PageStats interface for state and provide a matching initial state
   const [stats, setStats] = useState<PageStats>({
     total: 0,
@@ -70,19 +78,29 @@ const DeduplicationReviewPage: React.FC = () => {
   });
   const [messageApi, contextHolder] = message.useMessage(); // Use the hook correctly
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (page: number = pagination.current || 1, size: number = pagination.pageSize || 50) => {
     setLoading(true);
+    console.log(`Loading data for page ${page}, size ${size}`);
     try {
-      // Fetch both entries and stats
-      const [entriesData, statsData] = await Promise.all([
-        getDeduplicationReviewEntries(),
+      // Fetch paginated entries and stats
+      const [dedupResponse, statsData] = await Promise.all([
+        getDeduplicationReviewEntries(page, size),
         getDatabaseStats()
       ]);
 
+      const { groups: entriesData, totalGroups } = dedupResponse;
+
       setGroupedEntries(entriesData);
+      setPagination(prev => ({
+        ...prev,
+        current: page,
+        pageSize: size,
+        total: totalGroups,
+      }));
+
       // Ensure the fetched stats data conforms to PageStats before setting
       if (statsData && typeof statsData === 'object' && 'deduplication' in statsData) {
-         setStats(statsData as PageStats);
+        setStats(statsData as PageStats);
       } else {
          console.error("Fetched stats data is missing 'deduplication' property:", statsData);
          setStats({ // Reset to default if data is invalid
@@ -93,11 +111,12 @@ const DeduplicationReviewPage: React.FC = () => {
          });
       }
 
-      // Prepare table data and initial decisions
+      // Prepare table data and update decisions (only for the current page's data)
       const newTableData: DeduplicationTableRow[] = [];
-      const initialDecisions: Record<string, Decision> = {};
+      const currentPageDecisions: Record<string, Decision> = {}; // Track decisions for this page load
+
       Object.entries(entriesData).forEach(([groupId, entries]) => {
-        // Determine initial state: if any entry in the group was marked primary, keep it. Otherwise, exclude all.
+        // Determine initial state for this group on this page load
         const primaryEntry = entries.find(e => e.is_primary_duplicate === 1);
 
         entries.forEach((entry, index) => {
@@ -109,26 +128,50 @@ const DeduplicationReviewPage: React.FC = () => {
             isFirstInGroup: isFirst,
             groupSize: entries.length,
           });
-          // Initial decision: Keep if it was the primary, otherwise exclude.
-          initialDecisions[entry.ID] = {
-            status: primaryEntry && entry.ID === primaryEntry.ID ? 'included' : 'excluded',
-          };
+          // Set initial decision for this entry *if not already decided*
+          if (!decisions[entry.ID]) {
+            currentPageDecisions[entry.ID] = {
+              status: primaryEntry && entry.ID === primaryEntry.ID ? 'included' : 'excluded',
+            };
+          }
         });
       });
+
       setTableData(newTableData);
-      setDecisions(initialDecisions);
+      // Merge new initial decisions with existing ones (don't overwrite user changes)
+      setDecisions(prev => ({ ...currentPageDecisions, ...prev }));
 
     } catch (error) {
-      messageApi.error('Failed to load data.');
+      messageApi.error(`Failed to load data: ${error instanceof Error ? error.message : 'Unknown error'}`);
       console.error(error);
     } finally {
       setLoading(false);
     }
-  }, [messageApi]);
+    // Only include dependencies that actually affect the fetch logic
+  }, [messageApi, pagination.current, pagination.pageSize]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    // Initial load
+    loadData(pagination.current, pagination.pageSize);
+    // loadData depends on pagination.current and pagination.pageSize,
+    // but we only want this effect for the *initial* load.
+    // Subsequent loads are triggered by handleTableChange.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array for initial load only
+
+  // Log tableData length whenever it changes for debugging
+  useEffect(() => {
+    console.log(`[DeduplicationReviewPage] tableData state updated. Length: ${tableData.length}`);
+  }, [tableData]);
+
+  // Handle pagination changes from the Ant Table
+  const handleTableChange = (newPagination: TablePaginationConfig) => {
+    // Antd pagination uses 'current' and 'pageSize'
+    const { current, pageSize } = newPagination;
+    // Update state and trigger data load for the new page/size
+    // The loadData function will update the pagination state internally after fetching
+    loadData(current, pageSize);
+  };
 
   const handleRunDeduplication = async () => {
     setRunningCheck(true);
@@ -136,9 +179,10 @@ const DeduplicationReviewPage: React.FC = () => {
     try {
       const result = await runDeduplicationCheck();
       messageApi.success({ content: `Deduplication check complete. ${result.count} entries updated for review. Refreshing list...`, key: 'dedupCheck', duration: 3 });
-      loadData(); // Refresh the list and stats
+      // Reset to page 1 and reload data after running the check
+      loadData(1, pagination.pageSize);
     } catch (error) {
-      messageApi.error({ content: 'Failed to run deduplication check.', key: 'dedupCheck', duration: 3 });
+      messageApi.error({ content: `Failed to run deduplication check: ${error instanceof Error ? error.message : 'Unknown error'}`, key: 'dedupCheck', duration: 3 });
       console.error(error);
     } finally {
       setRunningCheck(false);
@@ -186,9 +230,10 @@ const DeduplicationReviewPage: React.FC = () => {
     try {
       await updateDeduplicationStatus(updatesToSave);
       messageApi.success({ content: 'Decisions saved successfully!', key: 'saveDecisions', duration: 3 });
-      loadData(); // Refresh data and stats
+      // Reload current page data and stats
+      loadData(pagination.current, pagination.pageSize);
     } catch (error) {
-      messageApi.error({ content: 'Failed to save decisions.', key: 'saveDecisions', duration: 3 });
+      messageApi.error({ content: `Failed to save decisions: ${error instanceof Error ? error.message : 'Unknown error'}`, key: 'saveDecisions', duration: 3 });
       console.error(error);
     } finally {
       setSaving(false);
@@ -292,7 +337,7 @@ const DeduplicationReviewPage: React.FC = () => {
            <Link href="/">
              <Button type="text" icon={<ArrowLeftOutlined />} size="large" style={{ marginRight: 8 }}>
                Back
-             </Button>
+            </Button>
            </Link>
            <Title level={3} style={{ margin: 0 }}>
              Deduplication Review
@@ -300,10 +345,10 @@ const DeduplicationReviewPage: React.FC = () => {
          </Space>
          <Button
            icon={<ReloadOutlined />}
-           onClick={loadData} // Use loadData
+           onClick={() => loadData(pagination.current, pagination.pageSize)} // Refresh current page
            loading={loading && !runningCheck && !saving}
          >
-           Refresh Data
+           Refresh Current Page
          </Button>
       </Header>
 
@@ -368,9 +413,13 @@ const DeduplicationReviewPage: React.FC = () => {
               dataSource={tableData}
               bordered
               size="small"
-              pagination={false} // Show all groups at once
+              pagination={false} // Disable built-in table pagination
+              loading={loading} // Show loading state on table
+              // Remove onChange handler from Table
               expandable={{
                 expandedRowRender,
+                // expandIconColumnIndex is deprecated, but removing it might change layout slightly.
+                // Keep it for now unless layout breaks, then address the deprecation warning separately.
                 expandIconColumnIndex: 1 // Place expand icon after the first column ('Group')
               }}
               rowClassName={(record) => {
@@ -383,6 +432,19 @@ const DeduplicationReviewPage: React.FC = () => {
                 }
                 return className.trim();
               }}
+            />
+          )}
+          {/* Add separate Pagination component, ensuring total is defined */}
+          {!loading && (pagination.total ?? 0) > 0 && (
+            <Pagination
+              style={{ marginTop: 16, textAlign: 'right' }}
+              current={pagination.current}
+              pageSize={pagination.pageSize}
+              total={pagination.total ?? 0} // Provide default value for total
+              pageSizeOptions={pagination.pageSizeOptions}
+              showSizeChanger={pagination.showSizeChanger}
+              onChange={(page, pageSize) => handleTableChange({ current: page, pageSize })} // Use our handler
+              showTotal={(total, range) => `${range[0]}-${range[1]} of ${total} groups`} // Clarify total is groups
             />
           )}
           {/* Simplified global styles */}

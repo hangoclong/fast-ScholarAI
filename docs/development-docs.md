@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Literature Review Tool is a Next.js application designed to help researchers manage bibliographic data for literature reviews. It provides a unified interface for searching academic databases (Scopus, IEEE, Springer) and importing BibTeX files from other sources.
+The Literature Review Tool is a Next.js application designed to streamline the literature review process for researchers. It facilitates importing bibliographic data (via BibTeX files or external APIs), screening titles and abstracts (optionally assisted by AI), reviewing potential duplicates, and managing the included literature set.
 
 ## Architecture
 
@@ -10,201 +10,190 @@ The Literature Review Tool is a Next.js application designed to help researchers
 
 - **Framework**: Next.js with TypeScript
 - **UI Library**: Ant Design (antd)
-- **State Management**: React useState hooks
-- **API Client**: Axios
-- **BibTeX Parsing**: bibtex-parse-js
+- **State Management**: React Hooks (`useState`, `useEffect`, `useCallback`)
+- **Database**: SQLite (`literature-review.db`)
+- **Database Client (Backend)**: `sqlite`, `sqlite3`
+- **API Communication (Frontend)**: Fetch API
+- **BibTeX Parsing**: `bibtex-parse-js` (via custom wrapper `src/app/utils/bibtexParser.ts`)
+- **AI Integration**: Google Gemini (via `src/app/services/geminiService.ts` and `/api/gemini` route)
 
 ### Project Structure
 
 ```
 literature-review-tool/
+├── docs/
+│   ├── development-docs.md          # This file
+│   ├── batFile-StartServer.md       # Instructions for starting external API server (if used)
+│   └── openAPI.json                 # OpenAPI spec for external BibTeX APIs (if applicable)
+├── public/                          # Static assets (icons, etc.)
+├── scripts/
+│   └── init-database.js             # Script to initialize/update the SQLite database schema
 ├── src/
 │   ├── app/
-│   │   ├── abstract-screening/
-│   │   │   └── page.tsx             # Abstract screening page
-│   │   ├── api/
-│   │   │   ├── bibtex/
-│   │   │   │   ├── scopus/
-│   │   │   │   │   └── route.ts     # Scopus BibTeX API endpoint
-│   │   │   │   ├── ieee/
-│   │   │   │   │   └── route.ts     # IEEE BibTeX API endpoint
-│   │   │   │   └── springer/
-│   │   │   │       └── route.ts     # Springer BibTeX API endpoint
-│   │   │   ├── database/
-│   │   │   │   └── route.ts         # Database API endpoint
-│   │   │   └── gemini/
-│   │   │       └── route.ts         # Gemini API endpoint
-│   │   ├── components/
-│   │   │   ├── AIBatchProcessor.tsx  # AI batch processor component
-│   │   │   ├── AIPromptDialog.tsx   # AI prompt dialog component
-│   │   │   ├── ExpandableRow.tsx    # Expandable row component
-│   │   │   └── LiteratureTable.tsx  # Literature table component
+│   │   ├── api/                     # Next.js API Routes (Backend)
+│   │   │   ├── bibtex/              # Routes for external BibTeX APIs
+│   │   │   │   ├── ieee/route.ts
+│   │   │   │   ├── scopus/route.ts
+│   │   │   │   └── springer/route.ts
+│   │   │   ├── database/            # Internal API for database operations
+│   │   │   │   └── route.ts
+│   │   │   └── gemini/              # Internal API for interacting with Gemini
+│   │   │       └── route.ts
+│   │   ├── components/              # Reusable React components
+│   │   │   ├── AIBatchProcessor.tsx # Component for batch AI processing
+│   │   │   ├── AIPromptDialog.tsx   # Dialog for managing AI prompts
+│   │   │   ├── ExpandableRow.tsx    # Component for expandable table rows
+│   │   │   ├── LiteratureTable.tsx  # Main table for displaying literature
+│   │   │   └── Navigation.tsx       # Application navigation
 │   │   ├── config/
-│   │   │   └── api.ts               # API configuration settings
-│   │   ├── included-literature/
-│   │   │   └── page.tsx             # Included literature page
-│   │   ├── search/
-│   │   │   └── page.tsx             # Search page
+│   │   │   └── api.ts               # Configuration for *external* BibTeX APIs
 │   │   ├── services/
-│   │   │   └── geminiService.ts     # Gemini service
+│   │   │   └── geminiService.ts     # Client-side service for Gemini interaction
+│   │   ├── utils/                   # Utility functions
+│   │   │   ├── antd-compat.ts       # Ant Design compatibility helpers
+│   │   │   ├── bibtex-parse-js.d.ts # Type definitions for bibtex-parse-js
+│   │   │   ├── bibtexParser.ts      # Wrapper for BibTeX parsing logic
+│   │   │   ├── database.ts          # Client-side functions for DB API interaction
+│   │   │   ├── deduplication.ts     # Logic for identifying potential duplicates
+│   │   │   └── initDb.ts            # (Potentially redundant) DB initialization helper
+│   │   ├── abstract-screening/
+│   │   │   └── page.tsx             # UI for Abstract Screening stage
+│   │   ├── deduplication-review/
+│   │   │   └── page.tsx             # UI for Deduplication Review stage
+│   │   ├── included-literature/
+│   │   │   └── page.tsx             # UI for viewing included literature
+│   │   ├── search/
+│   │   │   └── page.tsx             # UI for searching/importing literature
 │   │   ├── title-screening/
-│   │   │   └── page.tsx             # Title screening page
-│   │   ├── utils/
-│   │   │   ├── antd-compat.ts       # Ant Design compatibility utils
-│   │   │   ├── bibtexParser.ts      # BibTeX parsing utility
-│   │   │   └── database.ts          # Database utility
-│   │   ├── favicon.ico              # Favicon
-│   │   ├── globals.css              # Global styles
-│   │   ├── layout.tsx               # App layout with Ant Design provider
-│   │   ├── page.tsx                 # Main application page
-│   │   ├── providers.tsx            # Ant Design provider setup
-│   │   └── types.ts                 # TypeScript interfaces
-├── docs/
-│   ├── development-docs.md          # Development documentation
-│   └── openAPI.json                 # API specification
-└── public/                          # Static assets
+│   │   │   └── page.tsx             # UI for Title Screening stage
+│   │   ├── favicon.ico
+│   │   ├── globals.css
+│   │   ├── layout.tsx               # Root layout
+│   │   ├── page.tsx                 # Main application entry page (often redirects or dashboard)
+│   │   ├── providers.tsx            # Context providers (e.g., Ant Design)
+│   │   └── types.ts                 # Core TypeScript types (BibEntry, ScreeningStatus, etc.)
+│   └── ... (other configuration files like .gitignore, package.json, etc.)
+├── literature-review.db             # SQLite database file (created on init)
+└── ... (other root files like next.config.ts, tsconfig.json)
 ```
 
-## API Configuration
+## Database (`literature-review.db`)
 
-API settings are centralized in the `src/app/config/api.ts` file, which includes:
+The application uses an SQLite database to store all literature data and settings.
 
-- **API_BASE_URL**: The base URL for the API server (default: http://localhost:8000)
-- **API_KEY**: Authentication key for API requests. This is a placeholder value. You need to obtain a Gemini API key and set it in the application.
+### Schema
 
-To use the Gemini service, you need to obtain a Gemini API key from Google AI Studio (https://makersuite.google.com/). Once you have the API key, you can save it in the application by navigating to the settings page and entering the key in the Gemini API Key field. The application will store the key in the database.
+- **`entries` table**: Stores individual bibliographic entries. Key columns include:
+    - `id` (TEXT PRIMARY KEY): Unique identifier (BibTeX key, potentially suffixed if duplicate).
+    - Standard BibTeX fields (`entry_type`, `title`, `author`, `year`, `journal`, `abstract`, `doi`, etc.).
+    - `source` (TEXT): Origin of the entry (e.g., 'Scopus API', 'manual_upload.bib').
+    - `title_screening_status` (TEXT): 'pending', 'included', 'excluded', 'maybe'.
+    - `abstract_screening_status` (TEXT): 'pending', 'included', 'excluded', 'maybe'.
+    - `deduplication_status` (TEXT): 'pending', 'included', 'excluded'. Status after deduplication review. 'included' means kept, 'excluded' means marked as duplicate.
+    - `is_duplicate` (INTEGER): 0 or 1, flag set by the deduplication algorithm.
+    - `duplicate_group_id` (TEXT): Identifier linking potential duplicates found by the algorithm.
+    - `is_primary_duplicate` (INTEGER): 0 or 1, flag potentially used by the algorithm to suggest a primary entry (currently not heavily used in UI).
+    - `*_screening_notes` (TEXT): User notes for each screening stage.
+    - `json_data` (TEXT): Stores any non-standard BibTeX fields as a JSON string.
+- **`settings` table**: Stores application settings. Key-value pairs include:
+    - `ai_prompt_title`: Custom prompt for title screening AI.
+    - `ai_prompt_abstract`: Custom prompt for abstract screening AI.
+    - `api_key_gemini`: User's Google Gemini API key.
 
-- **DEFAULT_PARAMS**: Default parameters for each API endpoint
-- **ENDPOINTS**: Path definitions for each API endpoint
-- **API_HEADERS**: API headers, including the `X-API-Key` header for authentication
+### Initialization
 
-## API Integration
-
-The application integrates with three BibTeX API endpoints:
-
-### 1. Scopus BibTeX API
-
-- **Endpoint**: `/bibtex/scopus`
-- **Method**: GET
-- **Parameters**:
-  - `query` (required): Search query string
-  - `keywords` (optional): Comma-separated keywords
-  - `count` (optional): Number of results (default: 25)
-- **Headers**:
-  - `X-API-Key` (required): API authentication key
-- **Response**: BibTeXResponse object with `total_results` and `bibtex` fields
-
-### 2. IEEE BibTeX API
-
-- **Endpoint**: `/bibtex/ieee`
-- **Method**: GET
-- **Parameters**:
-  - `query` (required): Search query string
-  - `keywords` (optional): Comma-separated keywords
-  - `max_records` (optional): Number of results (default: 25)
-  - `start_record` (optional): Start index for pagination (default: 1)
-- **Headers**:
-  - `X-API-Key` (required): API authentication key
-- **Response**: BibTeXResponse object with `total_results` and `bibtex` fields
-
-### 3. Springer BibTeX API
-
-- **Endpoint**: `/bibtex/springer`
-- **Method**: GET
-- **Parameters**:
-  - `query` (required): Search query string
-  - `keywords` (optional): Comma-separated keywords
-  - `count` (optional): Number of results (default: 25)
-- **Headers**:
-  - `X-API-Key` (required): API authentication key
-- **Response**: BibTeXResponse object with `total_results` and `bibtex` fields
-
-## Gemini Service
-
-The application uses the Gemini service to assist with title and abstract screening. The Gemini service is integrated using the `src/app/services/geminiService.ts` file.
-
-The `processWithGemini` function processes text with the Gemini API for single items. The `batchProcessWithGemini` function processes multiple items with the Gemini API in batch.
-
-Both functions retrieve the Gemini API key using `getAPIKey` from `../utils/database`. They make API requests to the `/api/gemini` Next.js API route.
-
-The API responses are parsed to extract the decision, confidence, and reasoning from the Gemini API.
-
-The AI prompts used by the Gemini service can be customized in the settings page. The prompts are stored in the database and associated with the `title` and `abstract` screening types.
-
-## BibTeX Parsing
-
-The application uses the `bibtex-parse-js` library to parse BibTeX strings into structured JavaScript objects. The parsing logic is encapsulated in the `parseBibtex` function in `src/app/utils/bibtexParser.ts`.
-
-## UI Components
-
-The main UI is built with Ant Design components:
-
-1. **Layout**: The application uses Ant Design's `Layout` component with `Header` and `Content` sections.
-
-2. **Search Form**: A form with input fields for the search query and keywords, along with buttons for each academic database.
-
-3. **File Upload**: An upload component that accepts `.bib` files and processes them client-side.
-
-4. **Results Table**: A table displaying the parsed BibTeX entries with sortable columns.
-
-## Development Setup
-
-1. **Installation**:
-   ```bash
-   npm install
-   ```
-
-2. **Configuration**:
-   - Update the API settings in `src/app/config/api.ts` if needed
-   - Default API server is set to `http://localhost:8000`
-   - Default API key is set to `test_key_1`
-
-- To initialize the database, run the following command in the terminal:
+- The database file (`literature-review.db`) is created in the project root.
+- **Recommended Method:** Run the initialization script:
   ```bash
   npm run init-database
   ```
-  This will create the `literature-review.db` file in the project root.
+  This script creates the file and ensures all tables and columns exist, adding missing columns if necessary (useful for updates).
+- **Automatic:** The backend API (`/api/database`) will also attempt to initialize the database if the file or tables are missing when an API call is made.
 
-- To set the Gemini API key, navigate to the settings page in the application and enter the key in the Gemini API Key field. The application will store the key in the database.
+### Interaction
 
-3. **Running the Development Server**:
-   ```bash
-   npm run dev
-   ```
+- **Backend:** The `/api/database/route.ts` file handles all direct database interactions using `sqlite` and `sqlite3`. It provides API endpoints for CRUD operations and specific actions like running deduplication.
+- **Frontend:** The `src/app/utils/database.ts` file provides async functions that frontend components use to call the backend API via `fetch`. It abstracts the API calls for fetching entries, updating statuses, managing settings, etc.
 
-4. **Building for Production**:
-   ```bash
-   npm run build
-   ```
+## Core Features
 
-## Future Enhancements
+### 1. Data Import
 
-1. **Authentication**: Add user authentication for personalized experiences.
-2. **Saved Searches**: Allow users to save their search queries.
-3. **Export Options**: Add options to export the table data in different formats (CSV, JSON).
-4. **Advanced Filtering**: Implement more advanced filtering options for the results table.
-5. **Citation Management**: Add features for managing citations and generating reference lists.
+- **External APIs:** Search Scopus, IEEE, Springer via dedicated API routes (`/api/bibtex/*`). Requires configuration in `src/app/config/api.ts` and potentially a running external API server (see `docs/batFile-StartServer.md`).
+- **File Upload:** Upload `.bib` files directly in the Search page. Parsing is handled by `src/app/utils/bibtexParser.ts`.
 
-## To-Do Tasks
+### 2. Deduplication
 
-### Table Enhancements
+- **Algorithm:** The `src/app/utils/deduplication.ts` file contains the `findPotentialDuplicates` function, which identifies potential duplicates based on DOI and title similarity.
+- **Process Trigger:** Users can manually trigger the check via the "Run Deduplication Check" button on the Deduplication Review page. This calls the `/api/database?action=run-deduplication` endpoint, which executes `runDeduplicationProcess` on the backend.
+- **Review:** The Deduplication Review page (`/deduplication-review`) fetches entries marked for review (`deduplication_status = 'pending'`) using `/api/database?action=deduplication-review`. Entries are grouped by `duplicate_group_id`.
+- **Decision:** Users select entries to "Keep" (sets `deduplication_status` to 'included'). Unchecked entries in a saved group are implicitly marked as duplicates (`deduplication_status` set to 'excluded'). Saving calls `/api/database?action=update-deduplication`.
+- **Impact:** Entries marked with `deduplication_status = 'excluded'` are filtered out from subsequent screening stages and the final included list.
 
-1. **Define columns to show in the table**
-   - Review and finalize which BibTeX fields should be displayed as columns
-   - Consider adding additional columns based on user feedback
-   - Determine optimal column widths and display formats
-   - Add sorting capabilities for all columns
+### 3. Screening Stages
 
-2. **Extend table functionality with expandable rows**
-   - Implement expandable rows to show detailed information for each entry
-   - Display the abstract in the expanded section (show "N/A" if not available)
-   - Include all relevant bibliographic information in the expanded view:
-     - DOI
-     - URL
-     - Keywords
-     - Pages
-     - Volume/Issue
-     - Publisher details
-     - Conference/Journal information
-   - Add formatting options for the expanded content
-   - Consider adding actions in the expanded view (e.g., copy citation, export)
+- **Title Screening:** (`/title-screening`) Displays entries not excluded by deduplication. Users assign 'included', 'excluded', or 'maybe' status. Updates status via `/api/database?action=update-screening`.
+- **Abstract Screening:** (`/abstract-screening`) Displays entries marked 'included' during title screening. Users assign 'included', 'excluded', or 'maybe' status. Updates status via `/api/database?action=update-screening`.
+- **AI Assistance (Optional):**
+    - Uses Google Gemini via `src/app/services/geminiService.ts` which calls the `/api/gemini` backend route.
+    - Requires a Gemini API key, saved via the Settings UI (`/api/database?action=saveApiKey`).
+    - Uses customizable prompts, saved via the Settings UI (`/api/database?action=savePrompt`).
+    - Provides suggestions for screening decisions.
+
+### 4. Included Literature
+
+- The `/included-literature` page displays all entries that have passed screening (status 'included' in either title or abstract screening) and were not marked as duplicates (`deduplication_status != 'excluded'`). Fetched via `/api/database?action=included-literature`.
+
+## API Configuration
+
+- **External BibTeX APIs:** Configured in `src/app/config/api.ts`. Requires setting `API_BASE_URL` (if using a separate server for these APIs) and potentially updating `API_KEY` and `ENDPOINTS`.
+- **Internal Database API:** Located at `/api/database`. No separate configuration file; logic is self-contained in `src/app/api/database/route.ts`.
+- **Gemini Service:**
+    - API Key: Obtained from Google AI Studio and saved via the application's Settings page (stored in the database `settings` table).
+    - Prompts: Default prompts are provided, but can be customized via the Settings page (stored in the database `settings` table).
+    - Backend Route: `/api/gemini/route.ts` handles communication with the Google Gemini API using the stored key.
+
+## Development Setup
+
+1.  **Prerequisites**: Node.js, npm
+2.  **Installation**:
+    ```bash
+    npm install
+    ```
+3.  **Database Initialization**:
+    ```bash
+    npm run init-database
+    ```
+    This creates `literature-review.db` and sets up the schema.
+4.  **Configuration (Optional but Recommended)**:
+    - **Gemini API Key**: Obtain a key from Google AI Studio. Run the application (`npm run dev`), navigate to the (currently non-existent, needs implementation) Settings page, and save the key.
+    - **External BibTeX APIs**: If using the external API search functionality, configure `src/app/config/api.ts` and ensure the corresponding API server is running.
+5.  **Running the Development Server**:
+    ```bash
+    npm run dev
+    ```
+    Access the application at `http://localhost:3000` (or the configured port).
+6.  **Building for Production**:
+    ```bash
+    npm run build
+    npm start
+    ```
+
+## Key Components & Utilities
+
+- **`LiteratureTable.tsx`**: Central component for displaying entries in various stages. Uses Ant Design Table with features like sorting and expandable rows (details shown in `ExpandableRow.tsx`).
+- **`database.ts` (utils)**: Frontend functions for all database interactions via the API.
+- **`route.ts` (api/database)**: Backend logic for handling database requests.
+- **`deduplication.ts` (utils)**: Contains the core logic for identifying duplicate entries.
+- **`geminiService.ts` (services)**: Handles client-side logic for interacting with the Gemini API via the `/api/gemini` route.
+
+## Future Enhancements / To-Do
+
+*(Review and update based on current status)*
+
+1.  **Settings Page UI**: Implement a dedicated UI page for managing the Gemini API key and AI prompts.
+2.  **Authentication**: Add user accounts for personalized settings and data isolation.
+3.  **Export Options**: Add functionality to export included literature (or other subsets) in various formats (BibTeX, CSV, RIS).
+4.  **Advanced Filtering/Search**: Implement more robust filtering within tables (e.g., by keyword, source, status).
+5.  **UI/UX Refinements**: Improve loading states, error handling, and overall user experience.
+6.  **Testing**: Add unit and integration tests.

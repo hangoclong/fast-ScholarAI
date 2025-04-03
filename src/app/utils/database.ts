@@ -192,20 +192,30 @@ export async function updateScreeningStatus(
   }
 }
 
-// Get entries for deduplication review, grouped by duplicate_group_id
-export async function getDeduplicationReviewEntries(): Promise<Record<string, BibEntry[]>> {
+// Get entries for deduplication review, grouped by duplicate_group_id (paginated)
+export async function getDeduplicationReviewEntries(
+  page: number = 1, 
+  pageSize: number = 50
+): Promise<{ groups: Record<string, BibEntry[]>, totalGroups: number }> {
   try {
-    const response = await fetch(`${API_BASE_URL}?action=deduplication-review`);
+    const response = await fetch(`${API_BASE_URL}?action=deduplication-review&page=${page}&pageSize=${pageSize}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+    }
+    
     const data = await response.json();
     
     if (!data.success) {
       throw new Error(data.message || 'Failed to get deduplication review entries');
     }
     
-    return data.data || {}; // Expects data in { [groupId]: BibEntry[] } format
+    // Expects data in { success: true, data: { groups: { [groupId]: BibEntry[] }, totalGroups: number } } format
+    return data.data || { groups: {}, totalGroups: 0 }; 
   } catch (error) {
     console.error('Error getting deduplication review entries:', error);
-    throw new Error('Failed to get deduplication review entries');
+    throw new Error(`Failed to get deduplication review entries: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
