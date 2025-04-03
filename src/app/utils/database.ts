@@ -351,6 +351,33 @@ export async function getDatabaseStats(): Promise<{
   }
 }
 
+// Reset title screening status for all entries
+export async function resetTitleScreeningStatus(): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}?action=reset-title-screening`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}), // No body needed for this action
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.message || 'Failed to reset title screening status');
+    }
+    console.log('Successfully reset title screening status via API.');
+  } catch (error) {
+    console.error('Error resetting title screening status:', error);
+    throw new Error(`Failed to reset title screening status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
 // Default prompts for screening
 const DEFAULT_PROMPTS = {
   title: 'Based on the title "{text}", determine if this paper should be included in a literature review. Consider the relevance to the research topic.\n\nProvide your response in JSON format with the following structure:\n{\n  "decision": "INCLUDE", "EXCLUDE", or "MAYBE",\n  "confidence": a number between 0 and 1,\n  "reasoning": "Your reasoning for this decision"\n}\n\nEnsure your response is valid JSON that can be parsed directly.',

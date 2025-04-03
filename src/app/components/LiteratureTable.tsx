@@ -45,13 +45,14 @@ export default function LiteratureTable({
   const [searchText, setSearchText] = useState<string>('');
   const [filterField, setFilterField] = useState<string>('all');
   const [sortField, setSortField] = useState<string>('year');
-  const [sortOrder, setSortOrder] = useState<'ascend' | 'descend'>('descend');
+  const [sortOrder, setSortOrder] = useState<'ascend' | 'descend' | null>('descend'); // Allow null for sortOrder state
   const [statusFilter, setStatusFilter] = useState<string>('all'); // Changed state type and initial value
-  const [aiModalVisible, setAIModalVisible] = useState<boolean>(false);
-  const [aiProcessingStatus, setAiProcessingStatus] = useState<string>('idle');
-  const [aiProcessingProgress, setAiProcessingProgress] = useState<number>(0);
+  // Removed AI Modal/Progress state - handled by AIBatchProcessor internally
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [messageApi, contextHolder] = message.useMessage();
+  const [currentPage, setCurrentPage] = useState<number>(1); // Add state for current page
+  const [pageSize, setPageSize] = useState<number>(10); // Add state for page size, initialize with default
+  // Removed triggerAiProcessing state
 
   console.log('Rendering LiteratureTable - Current statusFilter state:', statusFilter); // Log state value
 
@@ -365,56 +366,50 @@ export default function LiteratureTable({
     });
   }
 
-  // Handle table sorting
-  const handleTableChange = (pagination: any, filters: any, sorter: any) => {
-    if (sorter && sorter.field) {
+  // Handle table changes (sorting, pagination)
+  const handleTableChange: TableProps<BibEntry>['onChange'] = (pagination, filters, sorter) => {
+    // Update pagination state
+    setCurrentPage(pagination.current || 1);
+    setPageSize(pagination.pageSize || 10); // Use default if undefined
+
+    // Update sorting state
+    if (sorter && 'field' in sorter && sorter.field) {
       setSortField(sorter.field as string);
-      setSortOrder(sorter.order as 'ascend' | 'descend' || 'ascend');
-    }
-  };
-
-  // Table pagination configuration
-  const paginationConfig = {
-    pageSize: 10,
-    showSizeChanger: true,
-    pageSizeOptions: ['10', '20', '50'],
+      setSortOrder(sorter.order || null); // Allow resetting sort order
+    } else {
+      // Reset sorting if column header is clicked without a specific order
+      setSortField('year'); // Or your default sort field
+      setSortOrder('descend'); // Or your default sort order
+     }
+   };
+ 
+   // Removed handleProgressUpdate and handleStatusUpdate callbacks
+ 
+   // Table pagination configuration (used for options and total display)
+   const paginationConfig = {
+     pageSize: 10, // Default page size
+     showSizeChanger: true,
+    pageSizeOptions: ['10', '20', '50', '100'], // Keep page sizes reasonable for performance
     showTotal: (total: number) => `Total ${total} items`,
-  };
-
-  // Handle AI batch processing
-  const handleAIBatchProcessing = () => {
-    if (selectedRowKeys.length === 0) {
-      messageApi.warning('Please select entries to process');
-      return;
-    }
-    
-    setAIModalVisible(true);
-    setAiProcessingStatus('idle');
-    setAiProcessingProgress(0);
-  };
-
-  // Handle AI processing complete
-  const handleAIProcessingComplete = (results: { id: string; status: ScreeningStatus; notes?: string }[]) => {
-    console.log('AI processing complete:', results);
-    
-    // Update entries with AI results
-    if (results.length > 0 && onScreeningAction) {
-      results.forEach(result => {
-        onScreeningAction(result.id, result.status, result.notes);
-      });
-      
-      messageApi.success(`Processed ${results.length} entries with AI`);
-    }
-    
-    // Close modal and reset state
-    setAIModalVisible(false);
-    setSelectedRowKeys([]);
-  };
-
-  // Log the final data being passed to the AntD Table
-  console.log('LiteratureTable - Final sortedEntries for rendering:', sortedEntries);
-
-  return (
+   };
+ 
+   // Removed handleAIBatchProcessing function
+ 
+   // Handle AI processing completion from AIBatchProcessor
+   const handleAIProcessingComplete = () => {
+     console.log('AI batch processing complete signal received in LiteratureTable.');
+     // Reset selection in LiteratureTable after AIBatchProcessor finishes
+     setSelectedRowKeys([]);
+     // Refresh data if needed
+     if (refreshData) {
+       refreshData();
+     }
+   };
+ 
+   // Log the final data being passed to the AntD Table (Moved this log before return)
+   console.log('LiteratureTable - Final sortedEntries for rendering:', sortedEntries);
+ 
+   return (
     <div>
       {contextHolder}
       
@@ -478,43 +473,38 @@ export default function LiteratureTable({
             </Tooltip>
           </Space>
         </div>
-        
-        {/* AI Batch Processing */}
-        {screeningType && onScreeningAction && (
-          <div className="flex-shrink-0 ml-auto">
-            <AIBatchProcessor 
-              screeningType={screeningType || 'title'}
-              entries={entries.filter(entry => selectedRowKeys.includes(entry.ID || ''))}
-              onScreeningAction={(id, status, notes) => {
-                if (onScreeningAction) {
-                  onScreeningAction(id, status, notes);
-                }
-              }}
-              onComplete={() => {
-                setAIModalVisible(false);
-                setSelectedRowKeys([]);
-                if (refreshData) refreshData();
-              }}
-            />
-          </div>
-        )}
-      </div>
-      
-      <Table
+         
+         {/* Render AIBatchProcessor directly - it handles its own button/modal */}
+         {screeningType && onScreeningAction && (
+           <div className="flex-shrink-0 ml-auto">
+             <AIBatchProcessor
+               screeningType={screeningType}
+               // Pass only the selected entries to the processor
+               entries={entries.filter(entry => selectedRowKeys.includes(entry.ID || ''))}
+               onScreeningAction={onScreeningAction} // Pass down the screening action handler
+               onComplete={handleAIProcessingComplete} // Pass the completion handler
+             />
+           </div>
+         )}
+       </div>
+       
+       <Table
         key={tableKey} // Use the passed-in key here
         columns={columns}
         dataSource={sortedEntries}
         rowKey="ID"
         loading={loading}
-        pagination={{
-          defaultPageSize: 50, // Set default page size to 50
-          showSizeChanger: true,
-          pageSizeOptions: ['10', '20', '50', '100'],
-          showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} items`, // Improve total display
+        pagination={{ // Pass state and config options
+          current: currentPage,
+          pageSize: pageSize,
+          pageSizeOptions: paginationConfig.pageSizeOptions,
+          showSizeChanger: paginationConfig.showSizeChanger,
+          showTotal: paginationConfig.showTotal,
+          total: sortedEntries.length, // Crucial: Provide the total number of items for pagination calculation
         }}
         expandable={{
           expandedRowRender: (record) => (
-            <ExpandableRow 
+            <ExpandableRow
               record={record} 
               onUpdateAbstract={(id, abstract) => {
                 handleUpdateAbstract(id, abstract);
@@ -531,65 +521,29 @@ export default function LiteratureTable({
           },
         })}
         rowSelection={{
-          onChange: (selectedRowKeys: React.Key[]) => {
-            setSelectedRowKeys(selectedRowKeys);
+          selectedRowKeys, // Control selected keys
+          onChange: (keys: React.Key[]) => {
+            setSelectedRowKeys(keys);
           },
+          selections: [ // Add custom selection options
+            Table.SELECTION_ALL, // Default "Select All on Current Page"
+            Table.SELECTION_INVERT, // Default "Invert Selection on Current Page"
+            Table.SELECTION_NONE, // Default "Clear All Selections"
+            { // Custom option to select all filtered data
+              key: 'selectAllFiltered',
+              text: `Select All ${sortedEntries.length} Filtered Items`,
+              onSelect: () => {
+                const allFilteredIds = sortedEntries.map(entry => entry.ID);
+                setSelectedRowKeys(allFilteredIds);
+                // Show confirmation message
+                messageApi.info(`Selected all ${allFilteredIds.length} filtered entries.`); 
+              },
+            },
+          ],
         }}
-      />
-      
-      {/* AI Processing Modal */}
-      <Modal
-        title="AI Batch Processing"
-        open={aiModalVisible}
-        onCancel={() => {
-          if (aiProcessingStatus !== 'processing') {
-            setAIModalVisible(false);
-          }
-        }}
-        footer={[
-          <Button 
-            key="close" 
-            onClick={() => setAIModalVisible(false)}
-            disabled={aiProcessingStatus === 'processing'}
-          >
-            Close
-          </Button>,
-          <Button
-            key="process"
-            type="primary"
-            onClick={handleAIBatchProcessing}
-            loading={aiProcessingStatus === 'processing'}
-            disabled={selectedRowKeys.length === 0 || aiProcessingStatus === 'processing'}
-          >
-            Process
-          </Button>,
-        ]}
-        width={700}
-      >
-        <div className="mb-4">
-          <Progress 
-            percent={aiProcessingProgress} 
-            status={aiProcessingStatus === 'error' ? 'exception' : 
-                   aiProcessingStatus === 'success' ? 'success' : 'active'} 
-            style={{ display: aiProcessingStatus === 'idle' ? 'none' : 'block' }}
-          />
-        </div>
-        
-        <AIBatchProcessor 
-          screeningType={screeningType || 'title'}
-          entries={entries.filter(entry => selectedRowKeys.includes(entry.ID || ''))}
-          onScreeningAction={(id, status, notes) => {
-            if (onScreeningAction) {
-              onScreeningAction(id, status, notes);
-            }
-          }}
-          onComplete={() => {
-            setAIModalVisible(false);
-            setSelectedRowKeys([]);
-            if (refreshData) refreshData();
-          }}
-        />
-      </Modal>
-    </div>
+       />
+       
+       {/* Removed the external AI Processing Modal - AIBatchProcessor handles its own */}
+     </div>
   );
 };

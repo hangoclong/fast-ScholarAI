@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx'; // Import xlsx library
 import Navigation from '../components/Navigation';
 import LiteratureTable from '../components/LiteratureTable';
 import { BibEntry } from '../types';
-import { getIncludedLiterature } from '../utils/database';
+import { getIncludedEntries } from '../utils/database'; // Corrected import
 
 const { Header, Content } = Layout;
 const { Title, Text } = Typography;
@@ -18,42 +18,22 @@ export default function IncludedLiteraturePage() {
   const [exportingExcel, setExportingExcel] = useState<boolean>(false); // State for Excel export loading
   const [error, setError] = useState<string | null>(null);
   const [messageApi, contextHolder] = message.useMessage(); // For user feedback
-  const [stats, setStats] = useState<{
-    total: number;
-    titleOnly: number;
-    abstractOnly: number;
-    both: number;
-  }>({ total: 0, titleOnly: 0, abstractOnly: 0, both: 0 });
+  const [includedCount, setIncludedCount] = useState<number>(0); // Simplified state for the count
 
-  // Load included literature
+  // Load included literature (passed BOTH screenings)
   const loadEntries = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Fetch included literature entries
-      const data = await getIncludedLiterature();
+      // Fetch entries included after BOTH title and abstract screening
+      const data = await getIncludedEntries(); // Use the correct function
       setEntries(data);
-      
-      // Calculate statistics
-      const total = data.length;
-      const titleOnly = data.filter((entry: BibEntry) => 
-        entry.title_screening_status === 'included' && 
-        (!entry.abstract_screening_status || entry.abstract_screening_status !== 'included')
-      ).length;
-      const abstractOnly = data.filter((entry: BibEntry) => 
-        (!entry.title_screening_status || entry.title_screening_status !== 'included') && 
-        entry.abstract_screening_status === 'included'
-      ).length;
-      const both = data.filter((entry: BibEntry) => 
-        entry.title_screening_status === 'included' && 
-        entry.abstract_screening_status === 'included'
-      ).length;
-      
-      setStats({ total, titleOnly, abstractOnly, both });
+      setIncludedCount(data.length); // Set the total count
+
     } catch (err: any) {
-      console.error('Error loading included literature:', err);
-      setError(err.message || 'An error occurred while loading entries');
+      console.error('Error loading included entries:', err);
+      setError(err.message || 'An error occurred while loading included entries');
     } finally {
       setLoading(false);
     }
@@ -191,44 +171,16 @@ export default function IncludedLiteraturePage() {
             </Space>
           </div>
           
-          {error && <Alert message={`Error loading included literature: ${error}`} type="error" className="mb-4" showIcon />}
+          {error && <Alert message={`Error loading included entries: ${error}`} type="error" className="mb-4" showIcon />}
           
-          {/* Statistics */}
+          {/* Simplified Statistics */}
           <Row gutter={[16, 16]} className="mb-4">
-            <Col xs={24} sm={12} md={6}>
+            <Col xs={24} sm={12} md={8}> {/* Adjusted column span */}
               <Card>
                 <Statistic 
-                  title="Total Included" 
-                  value={stats.total} 
+                  title="Total Included Entries" 
+                  value={includedCount} 
                   prefix={<CheckCircleOutlined />}
-                  valueStyle={{ color: '#52c41a' }}
-                  loading={loading}
-                />
-              </Card>
-            </Col>
-            <Col xs={24} sm={12} md={6}>
-              <Card>
-                <Statistic 
-                  title="Title Screening Only" 
-                  value={stats.titleOnly} 
-                  loading={loading}
-                />
-              </Card>
-            </Col>
-            <Col xs={24} sm={12} md={6}>
-              <Card>
-                <Statistic 
-                  title="Abstract Screening Only" 
-                  value={stats.abstractOnly} 
-                  loading={loading}
-                />
-              </Card>
-            </Col>
-            <Col xs={24} sm={12} md={6}>
-              <Card>
-                <Statistic 
-                  title="Both Screenings" 
-                  value={stats.both} 
                   valueStyle={{ color: '#52c41a' }}
                   loading={loading}
                 />

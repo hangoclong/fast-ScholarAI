@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Typography, Statistic, Row, Col, Button, message, Spin, Layout, Alert } from 'antd'; // Added Alert import
-import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Card, Typography, Statistic, Row, Col, Button, message, Spin, Layout, Alert, Modal, Space, App } from 'antd'; // Import App
+import { ArrowLeftOutlined, ReloadOutlined, ExclamationCircleOutlined } from '@ant-design/icons'; // Added ExclamationCircleOutlined
 import Link from 'next/link';
 import LiteratureTable from '../components/LiteratureTable'; // Restore LiteratureTable import
 import { BibEntry, ScreeningStatus } from '../types';
@@ -11,13 +11,15 @@ import {
   getDatabaseStats, 
   updateScreeningStatus, 
   isDatabaseInitialized, 
-  initDatabase 
+  initDatabase,
+  resetTitleScreeningStatus // Added reset function import
 } from '../utils/database';
 
 const { Title, Text } = Typography;
 const { Header, Content, Footer } = Layout;
 
 export default function TitleScreeningPage() {
+  const { modal } = App.useApp(); // Use the hook to get modal instance
   const [entries, setEntries] = useState<BibEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [tableUpdateKey, setTableUpdateKey] = useState<number>(0); // Keep key state for refresh
@@ -31,6 +33,7 @@ export default function TitleScreeningPage() {
     abstractScreening: { pending: 0, included: 0, excluded: 0, maybe: 0 } 
   });
   const [messageApi, contextHolder] = message.useMessage();
+  const [resetting, setResetting] = useState<boolean>(false); // State for reset button loading
 
   // Load entries and statistics
   const loadData = useCallback(async () => {
@@ -94,6 +97,36 @@ export default function TitleScreeningPage() {
     }
   };
 
+  // Handle resetting title screening status for all entries (with Confirmation)
+  const handleResetStatus = async () => {
+    console.log("Reset All Statuses button clicked - Confirmation requested."); // Log confirmation request
+    modal.confirm({ // Use the modal instance from the useApp hook
+      title: 'Are you sure you want to reset all title screening statuses?',
+      icon: <ExclamationCircleOutlined />,
+      content: 'This action will set the status of ALL entries back to "pending" for title screening. This cannot be undone.',
+      okText: 'Yes, Reset All',
+      okType: 'danger',
+      cancelText: 'No, Cancel',
+      onOk: async () => {
+        try {
+          setResetting(true);
+          messageApi.loading({ content: 'Resetting statuses...', key: 'resetStatusMsg' });
+          await resetTitleScreeningStatus();
+          messageApi.success({ content: 'All title screening statuses reset to pending.', key: 'resetStatusMsg', duration: 2 });
+          await loadData(); // Refresh data after resetting
+        } catch (error) {
+          console.error('Error resetting title screening status:', error);
+          messageApi.error({ content: `Failed to reset statuses: ${error instanceof Error ? error.message : 'Unknown error'}`, key: 'resetStatusMsg', duration: 3 });
+        } finally {
+          setResetting(false);
+        }
+      },
+      onCancel() {
+        console.log('Reset cancelled');
+      },
+    });
+  };
+
   return (
     <Layout className="min-h-screen">
       {contextHolder}
@@ -111,13 +144,24 @@ export default function TitleScreeningPage() {
               Title Screening
             </Title>
           </div>
-          <Button 
-            icon={<ReloadOutlined />} 
-            onClick={loadData}
-            loading={loading}
-          >
-            Refresh
-          </Button>
+          <Space> {/* Group buttons */}
+            <Button 
+              danger // Use danger style for reset button
+              onClick={handleResetStatus}
+              loading={resetting}
+              disabled={loading} // Disable if main data is loading
+            >
+              Reset All Statuses
+            </Button>
+            <Button 
+              icon={<ReloadOutlined />} 
+              onClick={loadData}
+              loading={loading}
+              disabled={resetting} // Disable if reset is in progress
+            >
+              Refresh
+            </Button>
+          </Space>
         </div>
       </Header>
       

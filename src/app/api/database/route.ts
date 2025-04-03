@@ -695,6 +695,24 @@ async function updateDeduplicationStatus(updates: { id: string; status: Screenin
   }
 }
 
+// Reset the title screening status for all entries
+async function resetTitleScreeningStatus(): Promise<void> {
+  const db = await getDbConnection();
+  try {
+    await db.run('BEGIN TRANSACTION');
+    // Reset title_screening_status to 'pending' and clear notes for all entries
+    const result = await db.run(`UPDATE entries SET title_screening_status = 'pending', title_screening_notes = NULL`);
+    console.log(`Reset title screening status for ${result.changes} entries.`);
+    await db.run('COMMIT');
+  } catch (error) {
+    await db.run('ROLLBACK');
+    console.error('Error resetting title screening status:', error);
+    throw new Error(`Failed to reset title screening status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  } finally {
+    await db.close();
+  }
+}
+
 
 // API route handler
 export async function GET(request: NextRequest) {
@@ -913,6 +931,20 @@ export async function POST(request: NextRequest) {
            return NextResponse.json({
              success: false,
              message: error instanceof Error ? error.message : 'Unknown error running deduplication process'
+           }, { status: 500 });
+        }
+
+      case 'reset-title-screening': // New action
+        console.log('Database API - Processing reset title screening request...');
+        try {
+          await resetTitleScreeningStatus();
+          console.log('Database API - Successfully reset title screening status for all entries.');
+          return NextResponse.json({ success: true });
+        } catch (error) {
+           console.error('Database API - Error resetting title screening status:', error);
+           return NextResponse.json({
+             success: false,
+             message: error instanceof Error ? error.message : 'Unknown error resetting title screening status'
            }, { status: 500 });
         }
       

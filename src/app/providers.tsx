@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, App } from 'antd'; // Import App
 import ReactDOM from './utils/antd-compat';
 
 // Configure Ant Design to use our compatibility layer for React 19
@@ -13,7 +13,9 @@ if (typeof window !== 'undefined') {
 export function AntdProvider({ children }: { children: React.ReactNode }) {
   return (
     <ConfigProvider>
-      {children}
+      <App> {/* Wrap children with App */}
+        {children}
+      </App>
     </ConfigProvider>
   );
 }
