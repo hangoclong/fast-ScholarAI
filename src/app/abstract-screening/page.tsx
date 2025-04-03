@@ -49,19 +49,25 @@ export default function AbstractScreeningPage() {
   // Load data on component mount
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]); // Use loadData as dependency
 
   // Handle screening action
-  const handleScreeningAction = async (id: string, status: ScreeningStatus, notes?: string) => {
+  const handleScreeningAction = async (id: string, status: ScreeningStatus, notes?: string, confidence?: number) => { // Added confidence parameter
     try {
-      // Update screening status in database
-      await updateScreeningStatus(id, 'abstract', status, notes);
+      // Update screening status in database, including confidence
+      await updateScreeningStatus(id, 'abstract', status, notes, confidence);
       
       // Update local state to reflect the change
       setEntries(prevEntries => 
         prevEntries.map(entry => 
           entry.ID === id 
-            ? { ...entry, abstract_screening_status: status, abstract_screening_notes: notes || entry.abstract_screening_notes } // Corrected property name
+            ? { 
+                ...entry, 
+                abstract_screening_status: status, 
+                abstract_screening_notes: notes ?? entry.abstract_screening_notes,
+                // Conditionally add confidence if provided
+                ...(confidence !== undefined && { abstract_screening_confidence: confidence }) 
+              } 
             : entry
         )
       );

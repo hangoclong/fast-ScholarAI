@@ -63,21 +63,27 @@ export default function TitleScreeningPage() {
     loadData();
   }, [loadData]); // Use loadData as dependency
 
-  // Handle screening action (passed to LiteratureTable)
-  const handleScreeningAction = async (id: string, status: ScreeningStatus, notes?: string) => {
+  // Handle screening action (passed to LiteratureTable and AIBatchProcessor)
+  const handleScreeningAction = async (id: string, status: ScreeningStatus, notes?: string, confidence?: number) => { // Added confidence parameter
     try {
-      // Update screening status in database
-      await updateScreeningStatus(id, 'title', status, notes);
+      // Update screening status in database, now including confidence
+      await updateScreeningStatus(id, 'title', status, notes, confidence);
 
       // Update local state to reflect the change (important for stats refresh)
-      // This might cause a slight delay in visual update within LiteratureTable 
+      // This might cause a slight delay in visual update within LiteratureTable
       // if it doesn't re-fetch internally, but ensures stats are correct.
       // Alternatively, LiteratureTable could handle its own state update + callback.
       // For now, we update the parent state and trigger a refresh via key.
       setEntries(prevEntries =>
         prevEntries.map(entry =>
           entry.ID === id
-            ? { ...entry, title_screening_status: status, title_screening_notes: notes ?? entry.title_screening_notes } 
+            ? { 
+                ...entry, 
+                title_screening_status: status, 
+                title_screening_notes: notes ?? entry.title_screening_notes,
+                // Conditionally add confidence if provided
+                ...(confidence !== undefined && { title_screening_confidence: confidence }) 
+              } 
             : entry
         )
       );

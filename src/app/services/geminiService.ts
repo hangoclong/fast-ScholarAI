@@ -3,45 +3,24 @@ import { getAPIKey } from '../utils/database';
 // Local storage key for tracking the next API key index
 const GEMINI_KEY_INDEX_LS_KEY = 'geminiApiKeyIndex';
 
-// Types for API responses
-interface ApiResponse {
-  raw: string;
-  parsed?: {
-    decision: string;
-    confidence: number;
-    reasoning: string;
-  };
+// Define the structure for the expected JSON array items from the backend
+// This should match the GeminiBatchResponseItem interface in the backend API route
+export interface BatchResultItem {
+  id: string;
+  decision: "INCLUDE" | "EXCLUDE" | "MAYBE";
+  confidence: number;
+  reasoning: string;
+  // Optional error field, in case the backend adds item-level errors in the future
+  // or if we want to represent frontend processing errors per item.
   error?: string;
 }
-
-interface BatchApiResponse {
-  results: {
-    id: string;
-    raw: string;
-    parsed?: {
-      decision: string;
-      confidence: number;
-      reasoning: string;
-    };
-    error?: string;
-  }[];
-  error?: string; // Top-level error for the whole batch request
-}
-
-// Default configuration for Gemini API (currently unused in this service, but kept for potential future use)
-// const DEFAULT_CONFIG = {
-//   temperature: 0.7,
-//   topP: 0.8,
-//   topK: 40,
-//   maxOutputTokens: 1024,
-// };
 
 // Define the callback type
 type AttemptCallback = (keyIndex: number, totalKeys: number) => void;
 
 // Helper function to manage API key rotation and fetch calls
 async function callGeminiApiWithRotation(
-  method: 'POST' | 'PUT',
+  method: 'POST' | 'PUT', // Keep PUT for potential future use or backward compatibility
   bodyPayload: Record<string, any>,
   onAttempt?: AttemptCallback // Add optional callback parameter
 ): Promise<Response> {
@@ -78,12 +57,11 @@ async function callGeminiApiWithRotation(
         onAttempt(keyIndexToTry + 1, totalKeys); // Use 1-based index for display
       } catch (callbackError) {
         console.error("Error in onAttempt callback:", callbackError);
-        // Decide if callback errors should prevent the API call - likely not
       }
     }
 
     try {
-      console.log(`Attempting Gemini API call with key index: ${keyIndexToTry} (0-based)`);
+      console.log(`Attempting Gemini API call with key index: ${keyIndexToTry} (0-based) using ${method}`);
       const response = await fetch('/api/gemini', {
         method: method,
         headers: {
@@ -94,29 +72,23 @@ async function callGeminiApiWithRotation(
       });
 
       // Check for quota errors specifically to allow retrying with the next key
-      // Gemini might return 429 Too Many Requests, or specific error messages in the body.
-      // The backend /api/gemini route should ideally propagate the status code or error message.
       if (!response.ok) {
         let errorData;
         try {
           errorData = await response.json();
         } catch (jsonError) {
-          // If response is not JSON, use status text
           errorData = { error: response.statusText };
         }
         const errorMessage = (errorData?.error || `API request failed with status ${response.status}`).toLowerCase();
-        
-        // Check for common quota/rate limit indicators
-        const isQuotaError = response.status === 429 || 
-                             errorMessage.includes('quota') || 
+        const isQuotaError = response.status === 429 ||
+                             errorMessage.includes('quota') ||
                              errorMessage.includes('rate limit') ||
                              errorMessage.includes('too many requests');
 
         if (isQuotaError) {
           console.warn(`Quota error encountered with key index ${keyIndexToTry}. Trying next key.`);
           lastError = new Error(errorData?.error || `Quota limit likely reached (status ${response.status})`);
-          // Don't update localStorage index yet, continue loop
-          continue; 
+          continue;
         } else {
           // For non-quota errors, store the next index and throw immediately
           localStorage.setItem(GEMINI_KEY_INDEX_LS_KEY, nextIndex.toString());
@@ -130,105 +102,90 @@ async function callGeminiApiWithRotation(
       return response;
 
     } catch (error: any) {
-       // Catch errors thrown within the try block (e.g., non-quota fetch errors)
-       // or network errors before fetch completes.
-       // If it's not the quota error we explicitly continued on, we should stop.
        if (!lastError || error.message !== lastError.message) {
-         localStorage.setItem(GEMINI_KEY_INDEX_LS_KEY, nextIndex.toString()); // Store next index even on failure
-         throw error; // Re-throw the caught error
+         localStorage.setItem(GEMINI_KEY_INDEX_LS_KEY, nextIndex.toString());
+         throw error;
        }
-       // If it IS the quota error, we just let the loop continue
        console.warn(`Caught error during API call with key index ${keyIndexToTry}, likely quota related, continuing...`, error.message);
     }
   }
 
-  // If the loop completes without success (meaning all keys resulted in quota errors)
   throw new Error(`All Gemini API keys (${totalKeys}) failed, likely due to quota limits. Last error: ${lastError?.message || 'Unknown quota error'}`);
 }
 
 
 /**
- * Process text with Gemini API using key rotation
- * @param prompt The prompt template to use
- * @param text The text to process
- * @param screeningType The type of screening (title or abstract)
+ * Process a combined batch prompt with Gemini API using key rotation.
+ * Sends the entire prompt (instructions + formatted entry list) in one go via POST.
+ * @param fullPrompt The complete prompt string including instructions and the formatted list of entries.
  * @param onAttempt Optional callback function invoked before each key attempt: (keyIndex: number, totalKeys: number) => void
- * @returns The processed text from Gemini
+ * @returns A promise that resolves to an array of BatchResultItem objects parsed from the Gemini response.
  */
-export async function processWithGemini(
-  prompt: string,
-  text: string,
-  screeningType?: 'title' | 'abstract',
+export async function processBatchPromptWithGemini(
+  fullPrompt: string,
   onAttempt?: AttemptCallback // Pass callback down
-): Promise<string> {
+): Promise<BatchResultItem[]> {
   try {
-    // Pass the callback to the helper function
-    const response = await callGeminiApiWithRotation('POST', { prompt, text, screeningType }, onAttempt);
-    const data = await response.json() as ApiResponse;
+    // Pass the callback and the full prompt to the helper function using POST
+    // The backend POST handler now expects 'fullPrompt'
+    const response = await callGeminiApiWithRotation('POST', { fullPrompt }, onAttempt);
 
-    if (data.error) {
-      throw new Error(data.error);
+    // Check if the response status is OK, otherwise throw based on status/body
+    if (!response.ok) {
+        let errorData;
+        try {
+            errorData = await response.json();
+        } catch (jsonError) {
+            errorData = { error: response.statusText };
+        }
+        // Include raw response in error if available and parsing failed
+        const detail = errorData?.rawResponse ? ` Raw Response: ${errorData.rawResponse}` : '';
+        throw new Error(`${errorData?.error || `API request failed with status ${response.status}`}.${detail}`);
     }
 
-    // Return the raw text response or the formatted decision
-    if (data.parsed) {
-      return `Decision: ${data.parsed.decision}\nConfidence: ${data.parsed.confidence}\nReasoning: ${data.parsed.reasoning}`;
+    // Parse the JSON response from the backend
+    const data = await response.json();
+
+    // Check the structure returned by our backend API route
+    if (data.success === true && Array.isArray(data.results)) {
+      // Validate the structure of each item in the results array (optional but recommended)
+      const validatedResults = data.results.map((item: any) => {
+        // Basic check for core fields
+        if (typeof item.id !== 'string' || typeof item.decision !== 'string' || typeof item.confidence !== 'number' || typeof item.reasoning !== 'string') {
+           console.warn("Received invalid item structure from backend:", item);
+           // Return item with an error flag/message
+           return {
+                id: item.id || 'unknown_id', // Try to preserve ID if possible
+                decision: 'MAYBE', // Default decision on error
+                confidence: 0,
+                reasoning: 'Error: Invalid item structure received from AI.',
+                error: 'Invalid item structure received'
+            };
+        }
+        // Cast to BatchResultItem if structure seems valid
+        return item as BatchResultItem;
+      });
+      return validatedResults;
+    } else if (data.success === false) {
+      // Handle errors reported by the backend API route itself (e.g., parsing errors)
+      console.error('Backend API reported an error:', data.error);
+      // Include raw response in error if backend provided it
+      const detail = data.rawResponse ? ` Raw Response: ${data.rawResponse}` : '';
+      throw new Error(`${data.error || 'Backend API failed to process the request.'}${detail}`);
+    } else {
+      // Handle unexpected response structure from the backend
+      console.error('Unexpected response structure from backend API:', data);
+      throw new Error('Received unexpected response structure from the backend API.');
     }
-    return data.raw;
+
   } catch (error: any) {
-    console.error('Error calling Gemini API (processWithGemini):', error);
+    console.error('Error calling Gemini API via processBatchPromptWithGemini:', error);
+    // Re-throw a user-friendly error
     throw new Error(
-      `Failed to process with Gemini: ${error.message || 'Unknown error'}. Please check your API keys and network connection.`
+      `Failed to process batch prompt with Gemini: ${error.message || 'Unknown error'}. Please check API keys, network connection, and backend logs.`
     );
   }
 }
 
-/**
- * Process multiple items with Gemini API in batch using key rotation
- * @param prompt The prompt template to use
- * @param items Array of items to process with their IDs and text content
- * @param screeningType The type of screening (title or abstract)
- * @param onAttempt Optional callback function invoked before each key attempt: (keyIndex: number, totalKeys: number) => void
- * @returns Array of results with item IDs and processed text
- */
-export async function batchProcessWithGemini(
-  prompt: string,
-  items: { id: string; text: string }[],
-  screeningType?: 'title' | 'abstract',
-  onAttempt?: AttemptCallback // Pass callback down
-): Promise<{ id: string; result: string; error?: string }[]> {
-  try {
-    // Pass the callback to the helper function
-    const response = await callGeminiApiWithRotation('PUT', { prompt, items, screeningType }, onAttempt);
-    const data = await response.json() as BatchApiResponse;
-
-    if (data.error) {
-      // Handle top-level batch errors (e.g., invalid request structure)
-      throw new Error(data.error);
-    }
-
-    // Format the results
-    return data.results.map(item => {
-      if (item.error) {
-        return { id: item.id, result: '', error: item.error };
-      }
-      
-      if (item.parsed) {
-        return { 
-          id: item.id, 
-          result: `Decision: ${item.parsed.decision}\nConfidence: ${item.parsed.confidence}\nReasoning: ${item.parsed.reasoning}` 
-        };
-      }
-      
-      return { id: item.id, result: item.raw };
-    });
-  } catch (error: any) {
-    console.error('Error in batch processing with Gemini:', error);
-    // If the entire batch call failed (e.g., all keys exhausted), return error for all items
-    return items.map(item => ({
-      id: item.id,
-      result: '',
-      error: error.message || 'Failed to process batch with Gemini'
-    }));
-  }
-}
+// NOTE: The old processWithGemini and batchProcessWithGemini functions have been removed
+// as they are replaced by the single-prompt approach using processBatchPromptWithGemini.

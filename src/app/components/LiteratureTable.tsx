@@ -9,8 +9,7 @@ import { BibEntry, ScreeningStatus } from '../types';
 import ExpandableRow from './ExpandableRow';
 import { updateEntryAbstract } from '../utils/database';
 import AIBatchProcessor from './AIBatchProcessor';
-import { getAIPrompt, getAPIKey } from '../utils/database';
-import { processWithGemini } from '../services/geminiService';
+// Removed getAIPrompt, getAPIKey, processWithGemini imports as they are not used directly here
 
 const { Search } = Input;
 const { Option } = Select;
@@ -151,46 +150,7 @@ export default function LiteratureTable({
     }
   };
 
-  // AI screening for individual entries using Gemini API
-  const handleAiScreening = async (record: BibEntry) => {
-    if (!screeningType || !onScreeningAction) return;
-    
-    try {
-      // Show loading message
-      messageApi.loading('AI is analyzing the entry...');
-      
-      // Get the prompt and API key
-      const prompt = await getAIPrompt(screeningType);
-      const apiKey = await getAPIKey('gemini');
-      
-      // Extract text based on screening type
-      const text = screeningType === 'title' 
-        ? record.title || ''
-        : (record.abstract || record.title || '');
-      
-      // Process with Gemini API
-      const result = await processWithGemini(prompt, text, screeningType);
-      
-      // Parse the result to determine screening status
-      const upperResult = result.toUpperCase();
-      let status: ScreeningStatus = 'maybe';
-      
-      if (upperResult.includes('INCLUDE')) {
-        status = 'included';
-      } else if (upperResult.includes('EXCLUDE')) {
-        status = 'excluded';
-      }
-      
-      // Update screening status
-      onScreeningAction(record.ID, status, result);
-      
-      // Show success message
-      messageApi.success('AI analysis complete');
-    } catch (error: any) {
-      console.error('Error during AI screening:', error);
-      messageApi.error(`AI screening failed: ${error.message}`);
-    }
-  };
+  // Removed handleAiScreening function as individual AI screening is not performed here
 
   // Handle abstract update
   const handleUpdateAbstract = async (id: string, abstract: string) => {
@@ -256,15 +216,7 @@ export default function LiteratureTable({
             style={{ padding: '0 8px' }}
           />
         </Tooltip>
-        <Tooltip title="AI Screening">
-          <Button
-            icon={<RobotOutlined />}
-            size="small"
-            onClick={() => handleAiScreening(record)}
-            style={{ padding: '0 8px' }}
-            className="hover:shadow-md transition-all duration-300"
-          />
-        </Tooltip>
+        {/* Removed individual AI Screening button */}
       </Space>
     );
   };

@@ -135,10 +135,20 @@ The application uses an SQLite database to store all literature data and setting
 - **Title Screening:** (`/title-screening`) Displays entries not excluded by deduplication. Users assign 'included', 'excluded', or 'maybe' status. Updates status via `/api/database?action=update-screening`.
 - **Abstract Screening:** (`/abstract-screening`) Displays entries marked 'included' during title screening. Users assign 'included', 'excluded', or 'maybe' status. Updates status via `/api/database?action=update-screening`.
 - **AI Assistance (Optional):**
-    - Uses Google Gemini via `src/app/services/geminiService.ts` which calls the `/api/gemini` backend route.
+    - Uses Google Gemini via the `/api/gemini` backend route (POST method).
     - Requires a Gemini API key, saved via the Settings UI (`/api/database?action=saveApiKey`).
-    - Uses customizable prompts, saved via the Settings UI (`/api/database?action=savePrompt`).
-    - Provides suggestions for screening decisions.
+    - Uses customizable prompts (base instructions), saved via the Settings page (`/api/database?action=savePrompt`).
+    - **Batch Processing (`AIBatchProcessor.tsx`):**
+        - Filters selected entries for 'pending' or 'maybe' status.
+        - Iteratively processes entries in batches (default size 50).
+        - For each batch:
+            - Constructs a single prompt containing the base instructions and a formatted list of entry IDs and titles/abstracts.
+            - Calls the frontend service `processBatchPromptWithGemini` (`src/app/services/geminiService.ts`).
+            - This service calls the backend `/api/gemini` (POST) with the combined prompt.
+            - The backend sends the prompt to Gemini and expects a single JSON array response containing results for the batch.
+        - After all API calls complete, collects all results.
+        - Calls the backend `/api/database?action=update-screening-batch` *once* with an array of all successful updates (ID, status, notes, confidence) to update the database efficiently.
+    - **Database Schema:** The `entries` table includes `title_screening_confidence` and `abstract_screening_confidence` (REAL type) columns to store AI confidence scores. Schema migrations in `/api/database/route.ts` attempt to add these columns if they don't exist.
 
 ### 4. Included Literature
 
@@ -185,7 +195,7 @@ The application uses an SQLite database to store all literature data and setting
 - **`database.ts` (utils)**: Frontend functions for all database interactions via the API.
 - **`route.ts` (api/database)**: Backend logic for handling database requests.
 - **`deduplication.ts` (utils)**: Contains the core logic for identifying duplicate entries.
-- **`geminiService.ts` (services)**: Handles client-side logic for interacting with the Gemini API via the `/api/gemini` route.
+- **`geminiService.ts` (services)**: Handles client-side logic for interacting with the Gemini API via the `/api/gemini` route, primarily through `processBatchPromptWithGemini`.
 
 ## Future Enhancements / To-Do
 

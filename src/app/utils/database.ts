@@ -152,21 +152,23 @@ export async function getIncludedLiterature(): Promise<BibEntry[]> {
 
 // Update screening status
 export async function updateScreeningStatus(
-  id: string, 
-  screeningType: 'title' | 'abstract', 
+  id: string,
+  screeningType: 'title' | 'abstract',
   status: ScreeningStatus,
-  notes?: string
+  notes?: string,
+  confidence?: number // Add optional confidence parameter
 ): Promise<void> {
   try {
-    console.log(`Attempting to update ${screeningType} screening for entry ${id} to status: ${status}`);
-    console.log('Request payload:', { id, screeningType, status, notes });
-    
+    console.log(`Attempting to update ${screeningType} screening for entry ${id} to status: ${status} with confidence: ${confidence}`);
+    const payload = { id, screeningType, status, notes, confidence }; // Include confidence in payload
+    console.log('Request payload:', payload);
+
     const response = await fetch(`${API_BASE_URL}?action=update-screening`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ screeningType: screeningType, status: status, notes: notes, id: id }),
+      body: JSON.stringify(payload), // Send the updated payload
     });
 
     if (!response.ok) {
@@ -513,5 +515,50 @@ export async function saveAPIKey(service: 'gemini', apiKeys: string[]): Promise<
   } catch (error) {
     console.error(`Error saving ${service} API keys:`, error);
     throw new Error(`Failed to save ${service} API keys`);
+  }
+}
+
+// Batch update screening status
+export async function updateScreeningStatusBatch(
+  updates: { id: string; screeningType: 'title' | 'abstract'; status: ScreeningStatus; notes?: string; confidence?: number }[]
+): Promise<{ successCount: number; errorCount: number; errors: { id: string; message: string }[] }> {
+  try {
+    console.log(`Attempting batch update for ${updates.length} entries.`);
+    const response = await fetch(`${API_BASE_URL}?action=update-screening-batch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ updates }), // Send the array of updates
+    });
+
+    if (!response.ok) {
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = { message: response.statusText };
+      }
+      throw new Error(errorData.message || `API request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+      // Backend might return specific errors per item or a general failure message
+      console.error('Batch update failed on backend:', data);
+      throw new Error(data.message || 'Backend failed to process batch update.');
+    }
+
+    console.log('Batch update successful:', data);
+    // Return the success/error counts from the backend response
+    return {
+      successCount: data.successCount || 0,
+      errorCount: data.errorCount || 0,
+      errors: data.errors || []
+    };
+
+  } catch (error) {
+    console.error('Error during batch screening status update:', error);
+    throw new Error(`Failed batch screening status update: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
