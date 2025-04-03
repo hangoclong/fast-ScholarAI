@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react'; // Added useCallback
 import { Button, Modal, Progress, Typography, List, Tag, Space, message } from 'antd';
 import { RobotOutlined, SettingOutlined } from '@ant-design/icons';
 import { BibEntry, ScreeningStatus } from '../types';
-import { getAIPrompt, getAPIKey } from '../utils/database'; // Added getAPIKey
-import { processWithGemini } from '../services/geminiService'; // Changed import
+import { getAIPrompt } from '../utils/database'; // Removed getAPIKey import here, service handles it
+import { processWithGemini } from '../services/geminiService'; // Correct import
 import AIPromptDialog from './AIPromptDialog';
 
 const { Text, Paragraph } = Typography;
@@ -28,7 +28,13 @@ const AIBatchProcessor: React.FC<AIBatchProcessorProps> = ({
   const [processingModalVisible, setProcessingModalVisible] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [results, setResults] = useState<{id: string, status: ScreeningStatus, notes: string}[]>([]);
+  const [apiAttemptStatus, setApiAttemptStatus] = useState<string>(''); // State for API key status
   const [messageApi, contextHolder] = message.useMessage();
+
+  // Callback for geminiService to report key attempts
+  const handleApiAttempt = useCallback((keyIndex: number, totalKeys: number) => {
+    setApiAttemptStatus(`Attempting with Key ${keyIndex}/${totalKeys}...`);
+  }, []);
 
   // Extract the relevant text from an entry based on the screening type
   const extractText = (entry: BibEntry): string => {
@@ -98,7 +104,8 @@ const AIBatchProcessor: React.FC<AIBatchProcessorProps> = ({
       setProcessingModalVisible(true);
       setProgress(0);
       setResults([]);
-      
+      setApiAttemptStatus(''); // Reset status message
+
       // Get the prompt
       let prompt;
       try {
@@ -150,8 +157,17 @@ const AIBatchProcessor: React.FC<AIBatchProcessorProps> = ({
 
         try {
           console.log(`Processing entry ${entry.ID}...`);
+          setApiAttemptStatus('Preparing request...'); // Initial status before first key attempt
           const textToProcess = extractText(entry);
-          const resultText = await processWithGemini(prompt, textToProcess, screeningType);
+          
+          // Pass the callback to processWithGemini
+          const resultText = await processWithGemini(
+            prompt, 
+            textToProcess, 
+            screeningType, 
+            handleApiAttempt // Pass the callback here
+          );
+          
           const { status, notes } = parseAIResponse(resultText);
 
           processedResults.push({ id: entry.ID, status: status as ScreeningStatus, notes });
@@ -248,6 +264,7 @@ const AIBatchProcessor: React.FC<AIBatchProcessorProps> = ({
           <div>
             <Paragraph>Processing entries with AI...</Paragraph>
             <Progress percent={progress} status="active" />
+            {apiAttemptStatus && <Paragraph style={{ marginTop: '8px', color: '#888' }}>{apiAttemptStatus}</Paragraph>} 
           </div>
         ) : results.length > 0 ? (
           <div>

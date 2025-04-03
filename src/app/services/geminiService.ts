@@ -36,10 +36,14 @@ interface BatchApiResponse {
 //   maxOutputTokens: 1024,
 // };
 
+// Define the callback type
+type AttemptCallback = (keyIndex: number, totalKeys: number) => void;
+
 // Helper function to manage API key rotation and fetch calls
 async function callGeminiApiWithRotation(
   method: 'POST' | 'PUT',
-  bodyPayload: Record<string, any>
+  bodyPayload: Record<string, any>,
+  onAttempt?: AttemptCallback // Add optional callback parameter
 ): Promise<Response> {
   const apiKeys = await getAPIKey('gemini');
   if (!apiKeys || apiKeys.length === 0) {
@@ -68,8 +72,18 @@ async function callGeminiApiWithRotation(
     const apiKeyToUse = apiKeys[keyIndexToTry];
     const nextIndex = (keyIndexToTry + 1) % totalKeys; // Index to store for the *next* call
 
+    // Invoke the callback before making the attempt
+    if (onAttempt) {
+      try {
+        onAttempt(keyIndexToTry + 1, totalKeys); // Use 1-based index for display
+      } catch (callbackError) {
+        console.error("Error in onAttempt callback:", callbackError);
+        // Decide if callback errors should prevent the API call - likely not
+      }
+    }
+
     try {
-      console.log(`Attempting Gemini API call with key index: ${keyIndexToTry}`);
+      console.log(`Attempting Gemini API call with key index: ${keyIndexToTry} (0-based)`);
       const response = await fetch('/api/gemini', {
         method: method,
         headers: {
@@ -138,15 +152,18 @@ async function callGeminiApiWithRotation(
  * @param prompt The prompt template to use
  * @param text The text to process
  * @param screeningType The type of screening (title or abstract)
+ * @param onAttempt Optional callback function invoked before each key attempt: (keyIndex: number, totalKeys: number) => void
  * @returns The processed text from Gemini
  */
 export async function processWithGemini(
   prompt: string,
   text: string,
-  screeningType?: 'title' | 'abstract'
+  screeningType?: 'title' | 'abstract',
+  onAttempt?: AttemptCallback // Pass callback down
 ): Promise<string> {
   try {
-    const response = await callGeminiApiWithRotation('POST', { prompt, text, screeningType });
+    // Pass the callback to the helper function
+    const response = await callGeminiApiWithRotation('POST', { prompt, text, screeningType }, onAttempt);
     const data = await response.json() as ApiResponse;
 
     if (data.error) {
@@ -171,15 +188,18 @@ export async function processWithGemini(
  * @param prompt The prompt template to use
  * @param items Array of items to process with their IDs and text content
  * @param screeningType The type of screening (title or abstract)
+ * @param onAttempt Optional callback function invoked before each key attempt: (keyIndex: number, totalKeys: number) => void
  * @returns Array of results with item IDs and processed text
  */
 export async function batchProcessWithGemini(
   prompt: string,
   items: { id: string; text: string }[],
-  screeningType?: 'title' | 'abstract'
+  screeningType?: 'title' | 'abstract',
+  onAttempt?: AttemptCallback // Pass callback down
 ): Promise<{ id: string; result: string; error?: string }[]> {
   try {
-    const response = await callGeminiApiWithRotation('PUT', { prompt, items, screeningType });
+    // Pass the callback to the helper function
+    const response = await callGeminiApiWithRotation('PUT', { prompt, items, screeningType }, onAttempt);
     const data = await response.json() as BatchApiResponse;
 
     if (data.error) {
