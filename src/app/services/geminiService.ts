@@ -119,16 +119,18 @@ async function callGeminiApiWithRotation(
  * Sends the entire prompt (instructions + formatted entry list) in one go via POST.
  * @param fullPrompt The complete prompt string including instructions and the formatted list of entries.
  * @param onAttempt Optional callback function invoked before each key attempt: (keyIndex: number, totalKeys: number) => void
+ * @param modelName Optional name of the Gemini model to use.
  * @returns A promise that resolves to an array of BatchResultItem objects parsed from the Gemini response.
  */
 export async function processBatchPromptWithGemini(
   fullPrompt: string,
-  onAttempt?: AttemptCallback // Pass callback down
+  onAttempt?: AttemptCallback, // Pass callback down
+  modelName?: string // Add modelName parameter
 ): Promise<BatchResultItem[]> {
   try {
-    // Pass the callback and the full prompt to the helper function using POST
-    // The backend POST handler now expects 'fullPrompt'
-    const response = await callGeminiApiWithRotation('POST', { fullPrompt }, onAttempt);
+    // Pass the callback, full prompt, and model name to the helper function using POST
+    // The backend POST handler now expects 'fullPrompt' and optionally 'modelName'
+    const response = await callGeminiApiWithRotation('POST', { fullPrompt, modelName }, onAttempt);
 
     // Check if the response status is OK, otherwise throw based on status/body
     if (!response.ok) {

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react'; // Import useCallback
-import { Card, Typography, Statistic, Row, Col, Button, message, Spin, Layout, Alert, Space, App } from 'antd'; // Import App, Space, Alert
+import { Card, Typography, Statistic, Row, Col, Button, message, Spin, Layout, Alert, Space, App, Select } from 'antd'; // Import App, Space, Alert, Select
 import { ArrowLeftOutlined, ReloadOutlined, ExclamationCircleOutlined } from '@ant-design/icons'; // Added ExclamationCircleOutlined
 import Link from 'next/link';
 import LiteratureTable from '../components/LiteratureTable';
@@ -34,6 +34,20 @@ export default function AbstractScreeningPage() {
   });
   const [messageApi, contextHolder] = message.useMessage();
   const [resetting, setResetting] = useState<boolean>(false); // State for reset button loading
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.0-flash'); // State for selected AI model
+
+  // --- Model Options ---
+  const modelOptions = [
+    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+    { value: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' },
+    // Add more models here if needed in the future
+  ];
+
+  // --- Handler for Model Change ---
+  const handleModelChange = (value: string) => {
+    setSelectedModel(value);
+    messageApi.info(`AI Model set to: ${modelOptions.find(opt => opt.value === value)?.label || value}`);
+  };
 
   // Load entries and statistics (now with pagination)
   const loadData = useCallback(async (page = currentPage, size = pageSize) => {
@@ -249,6 +263,10 @@ export default function AbstractScreeningPage() {
               pageSize={pageSize}
               totalCount={totalEntries}
               onPaginationChange={handlePaginationChange}
+              // Pass model selection state and handler
+              selectedModel={selectedModel}
+              onModelChange={handleModelChange}
+              modelOptions={modelOptions} // Pass options for the dropdown
             />
             </>
           )}

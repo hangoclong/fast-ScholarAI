@@ -599,6 +599,7 @@ function convertRowToBibEntry(row: any): BibEntry {
     duplicate_group_id: row.duplicate_group_id,
     is_primary_duplicate: row.is_primary_duplicate,
     title_screening_notes: row.title_screening_notes,
+    abstract_screening_notes: row.abstract_screening_notes, // Added missing mapping
     // Include confidence scores if they exist in the row
     ...(row.title_screening_confidence !== undefined && { title_screening_confidence: row.title_screening_confidence }),
     ...(row.abstract_screening_confidence !== undefined && { abstract_screening_confidence: row.abstract_screening_confidence }),

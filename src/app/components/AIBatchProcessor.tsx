@@ -14,6 +14,7 @@ const { Text, Paragraph } = Typography; // Removed Link as it's not used
 interface AIBatchProcessorProps {
   entries: BibEntry[];
   screeningType: 'title' | 'abstract';
+  selectedModel?: string; // Add selectedModel prop
   onScreeningAction: (id: string, status: ScreeningStatus, notes?: string, confidence?: number) => void; // Added confidence
   onComplete: () => void;
 }
@@ -24,6 +25,7 @@ interface AIBatchProcessorProps {
 const AIBatchProcessor: React.FC<AIBatchProcessorProps> = ({
   entries,
   screeningType,
+  selectedModel, // Destructure selectedModel
   onScreeningAction,
   onComplete,
 }) => {
@@ -138,7 +140,8 @@ const AIBatchProcessor: React.FC<AIBatchProcessorProps> = ({
           // Call the new single-prompt batch processing service function
           const batchResults: BatchResultItem[] = await processBatchPromptWithGemini(
             fullPrompt,
-            handleApiAttempt // Pass the callback
+            handleApiAttempt, // Pass the callback
+            selectedModel // Pass the selected model name
           );
 
           // Add results from this API call to the overall results

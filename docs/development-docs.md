@@ -93,7 +93,8 @@ The application uses an SQLite database to store all literature data and setting
     - `is_duplicate` (INTEGER): 0 or 1, flag set by the deduplication algorithm.
     - `duplicate_group_id` (TEXT): Identifier linking potential duplicates found by the algorithm.
     - `is_primary_duplicate` (INTEGER): 0 or 1, flag potentially used by the algorithm to suggest a primary entry (currently not heavily used in UI).
-    - `*_screening_notes` (TEXT): User notes for each screening stage.
+    - `title_screening_notes` (TEXT): User notes or AI reasoning for title screening decisions.
+    - `abstract_screening_notes` (TEXT): User notes or AI reasoning for abstract screening decisions.
     - `json_data` (TEXT): Stores any non-standard BibTeX fields as a JSON string.
 - **`settings` table**: Stores application settings. Key-value pairs include:
     - `ai_prompt_title`: Custom prompt for title screening AI.
@@ -148,7 +149,7 @@ The application uses an SQLite database to store all literature data and setting
             - This service calls the backend `/api/gemini` (POST) with the combined prompt.
             - The backend sends the prompt to Gemini and expects a single JSON array response containing results for the batch.
         - After all API calls complete, collects all results.
-        - Calls the backend `/api/database?action=update-screening-batch` *once* with an array of all successful updates (ID, status, notes, confidence) to update the database efficiently.
+        - Calls the backend `/api/database?action=update-screening-batch` *once* with an array of all successful updates (ID, status, notes, confidence) to update the database efficiently. The `notes` field in this payload corresponds to the AI's `reasoning` and is saved into the appropriate `title_screening_notes` or `abstract_screening_notes` column.
     - **Database Schema:** The `entries` table includes `title_screening_confidence` and `abstract_screening_confidence` (REAL type) columns to store AI confidence scores. Schema migrations in `/api/database/route.ts` attempt to add these columns if they don't exist.
 
 ### 4. Included Literature
@@ -194,7 +195,7 @@ The application uses an SQLite database to store all literature data and setting
 
 - **`LiteratureTable.tsx`**: Central component for displaying entries in various stages. Uses Ant Design Table with features like sorting, filtering, and expandable rows (`ExpandableRow.tsx`). Pagination state (`currentPage`, `pageSize`, `totalCount`) is now controlled by the parent component via props to ensure state persistence across data refreshes.
 - **`database.ts` (utils)**: Frontend functions for all database interactions via the API. Functions like `getTitleScreeningEntries` and `getDeduplicationReviewEntries` now support pagination parameters (`page`, `pageSize`) and return `{ entries: BibEntry[], totalCount: number }` or similar structure.
-- **`route.ts` (api/database)**: Backend logic for handling database requests. GET endpoints for fetching entry lists (e.g., `action=title-screening`, `action=deduplication-review`) now accept `page` and `pageSize` query parameters and return paginated results along with the total count.
+- **`route.ts` (api/database)**: Backend logic for handling database requests. GET endpoints for fetching entry lists (e.g., `action=title-screening`, `action=deduplication-review`) now accept `page` and `pageSize` query parameters and return paginated results along with the total count. Includes the `convertRowToBibEntry` helper function which maps database columns (including `title_screening_notes` and `abstract_screening_notes`) to the `BibEntry` object used by the frontend.
 - **`deduplication.ts` (utils)**: Contains the core logic for identifying duplicate entries.
 - **`geminiService.ts` (services)**: Handles client-side logic for interacting with the Gemini API via the `/api/gemini` route, primarily through `processBatchPromptWithGemini`.
 

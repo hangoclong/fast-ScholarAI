@@ -9,17 +9,22 @@ interface GeminiBatchResponseItem {
   reasoning: string;
 }
 
-const MODEL_NAME = "gemini-1.5-flash"; // Using the 1.5 flash model for potentially better JSON handling
+const DEFAULT_MODEL_NAME = "gemini-2.0-flash"; // Default model if none provided
 
 export async function POST(request: NextRequest) {
   try {
     const reqBody = await request.json();
     // Expecting 'fullPrompt' which contains base instructions + formatted entry list
     // 'text' might still be sent by older frontend code, but 'fullPrompt' takes precedence
-    const { prompt: basePrompt, text: entryListText, fullPrompt: combinedPrompt, apiKey } = reqBody;
+    // Also extract optional 'modelName'
+    const { prompt: basePrompt, text: entryListText, fullPrompt: combinedPrompt, apiKey, modelName } = reqBody;
 
     // Use combinedPrompt if provided, otherwise construct it (for backward compatibility or simpler calls)
     const finalPrompt = combinedPrompt || (basePrompt && entryListText ? `${basePrompt}\n\nList of entries:\n\n${entryListText}` : null);
+
+    // Determine the model to use
+    const effectiveModelName = modelName || DEFAULT_MODEL_NAME;
+    console.log(`Using Gemini model: ${effectiveModelName}`);
 
     if (!finalPrompt) {
       return NextResponse.json({ error: 'A complete prompt (fullPrompt or basePrompt + text) is required' }, { status: 400 });
@@ -34,23 +39,23 @@ export async function POST(request: NextRequest) {
     const genAI = new GoogleGenerativeAI(apiKey);
     // Ensure JSON mode is enabled if the model supports it (check Gemini docs for specific model)
     // Forcing JSON output via prompt instructions is generally more reliable across models.
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME /*, generationConfig: { responseMimeType: "application/json" } */ });
+    const model = genAI.getGenerativeModel({ model: effectiveModelName /*, generationConfig: { responseMimeType: "application/json" } */ });
 
     // Adjust generation config - lower temperature might help with stricter JSON adherence
     const generationConfig = {
-      temperature: 0.1, // Essential for consistency and accuracy. But resillience to slight variations is good for json output.
-      topK: 20, // Top-K sampling, set to 20 for more focused output
-      topP: 0.95, // Top-P sampling, set to 0.95 for a balance between creativity and coherence
-      maxOutputTokens: 4096, // Increased max tokens for potentially large JSON array
+      temperature: 0, // Essential for consistency and accuracy. But resillience to slight variations is good for json output.
+      //topK: 20, // Top-K sampling, set to 20 for more focused output
+      //topP: 0.95, // Top-P sampling, set to 0.95 for a balance between creativity and coherence
+      maxOutputTokens: 8192, // Increased max tokens to prevent truncation
       responseMimeType: "application/json", // Enable if model explicitly supports it
     };
 
     // Safety settings - adjust as needed
     const safetySettings = [
-      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-      { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
     ];
 
     console.log("Sending request to Gemini model...");

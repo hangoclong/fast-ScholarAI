@@ -28,6 +28,10 @@ interface LiteratureTableProps {
   pageSize?: number;
   onPaginationChange?: (page: number, pageSize: number) => void;
   totalCount?: number; // Add prop for total count
+  // Add props for model selection
+  selectedModel?: string;
+  onModelChange?: (value: string) => void;
+  modelOptions?: { value: string; label: string }[];
 }
 
 export default function LiteratureTable({
@@ -44,6 +48,10 @@ export default function LiteratureTable({
   pageSize = 10,
   onPaginationChange,
   totalCount = 0, // Destructure totalCount, default to 0
+  // Destructure model selection props
+  selectedModel,
+  onModelChange,
+  modelOptions = [], // Default to empty array
 }: LiteratureTableProps) {
   console.log('LiteratureTable - Received props - currentPage:', currentPage, 'pageSize:', pageSize, 'totalCount:', totalCount); // Log received props
   console.log('LiteratureTable - received entries:', entries);
@@ -353,7 +361,7 @@ export default function LiteratureTable({
    const paginationConfig = {
      pageSize: 10, // Default page size
      showSizeChanger: true,
-    pageSizeOptions: ['10', '20', '50', '100'], // Keep page sizes reasonable for performance
+    pageSizeOptions: ['10', '20', '50', '100', '200', '400'], // Restored page sizes as requested
     showTotal: (total: number) => `Total ${total} items`,
    };
  
@@ -437,12 +445,29 @@ export default function LiteratureTable({
             </Tooltip>
           </Space>
         </div>
+
+        {/* AI Model Selection Dropdown */}
+        {screeningType && onModelChange && (
+          <div className="flex-shrink-0">
+            <Space>
+              <Text type="secondary">AI Model:</Text>
+              <Select
+                value={selectedModel}
+                style={{ width: 200 }}
+                onChange={onModelChange}
+                options={modelOptions}
+                placeholder="Select AI Model"
+              />
+            </Space>
+          </div>
+        )}
          
          {/* Render AIBatchProcessor directly - it handles its own button/modal */}
          {screeningType && onScreeningAction && (
            <div className="flex-shrink-0 ml-auto">
              <AIBatchProcessor
                screeningType={screeningType}
+               selectedModel={selectedModel} // Pass the selected model
                // Pass only the selected entries to the processor
                entries={entries.filter(entry => selectedRowKeys.includes(entry.ID || ''))}
                onScreeningAction={onScreeningAction} // Pass down the screening action handler
