@@ -74,39 +74,61 @@ export async function getAllEntries(): Promise<BibEntry[]> {
   }
 }
 
-// Get entries for title screening
-export async function getTitleScreeningEntries(): Promise<BibEntry[]> {
+// Get entries for title screening (paginated)
+export async function getTitleScreeningEntries(
+  page: number = 1, 
+  pageSize: number = 10
+): Promise<{ entries: BibEntry[], totalCount: number }> {
   try {
-    const response = await fetch(`${API_BASE_URL}?action=title-screening`);
+    // Add page and pageSize to the query parameters
+    const response = await fetch(`${API_BASE_URL}?action=title-screening&page=${page}&pageSize=${pageSize}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+    }
+    
     const data = await response.json();
     
     if (!data.success) {
       throw new Error(data.message || 'Failed to get title screening entries');
     }
     
-    // Check if the data is returned as 'data' or 'entries'
-    return data.data || data.entries || [];
+    // Expect data in { success: true, data: { entries: BibEntry[], totalCount: number } } format
+    return data.data || { entries: [], totalCount: 0 }; 
   } catch (error) {
     console.error('Error getting title screening entries:', error);
-    throw new Error('Failed to get title screening entries');
+    // Return empty result on error to avoid breaking the calling component
+    return { entries: [], totalCount: 0 };
   }
 }
 
-// Get entries for abstract screening
-export async function getAbstractScreeningEntries(): Promise<BibEntry[]> {
+// Get entries for abstract screening (paginated)
+export async function getAbstractScreeningEntries(
+  page: number = 1, 
+  pageSize: number = 10
+): Promise<{ entries: BibEntry[], totalCount: number }> {
   try {
-    const response = await fetch(`${API_BASE_URL}?action=abstract-screening`);
+    // Add page and pageSize to the query parameters
+    const response = await fetch(`${API_BASE_URL}?action=abstract-screening&page=${page}&pageSize=${pageSize}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+    }
+    
     const data = await response.json();
     
     if (!data.success) {
       throw new Error(data.message || 'Failed to get abstract screening entries');
     }
     
-    // Check if the data is returned as 'data' or 'entries'
-    return data.data || data.entries || [];
+    // Expect data in { success: true, data: { entries: BibEntry[], totalCount: number } } format
+    return data.data || { entries: [], totalCount: 0 }; 
   } catch (error) {
     console.error('Error getting abstract screening entries:', error);
-    throw new Error('Failed to get abstract screening entries');
+    // Return empty result on error
+    return { entries: [], totalCount: 0 };
   }
 }
 
@@ -387,6 +409,33 @@ export async function resetTitleScreeningStatus(): Promise<void> {
   } catch (error) {
     console.error('Error resetting title screening status:', error);
     throw new Error(`Failed to reset title screening status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// Reset abstract screening status for all relevant entries
+export async function resetAbstractScreeningStatus(): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}?action=reset-abstract-screening`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}), // No body needed for this action
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.message || 'Failed to reset abstract screening status');
+    }
+    console.log('Successfully reset abstract screening status via API.');
+  } catch (error) {
+    console.error('Error resetting abstract screening status:', error);
+    throw new Error(`Failed to reset abstract screening status: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 

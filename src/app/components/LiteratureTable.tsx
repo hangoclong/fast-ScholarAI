@@ -9,7 +9,6 @@ import { BibEntry, ScreeningStatus } from '../types';
 import ExpandableRow from './ExpandableRow';
 import { updateEntryAbstract } from '../utils/database';
 import AIBatchProcessor from './AIBatchProcessor';
-// Removed getAIPrompt, getAPIKey, processWithGemini imports as they are not used directly here
 
 const { Search } = Input;
 const { Option } = Select;
@@ -24,6 +23,11 @@ interface LiteratureTableProps {
   showAllEntries?: boolean; // If true, show all entries regardless of status
   refreshData?: () => void; // Function to refresh the data
   tableKey?: number; // Add prop for the key
+  // Add props for controlled pagination
+  currentPage?: number;
+  pageSize?: number;
+  onPaginationChange?: (page: number, pageSize: number) => void;
+  totalCount?: number; // Add prop for total count
 }
 
 export default function LiteratureTable({
@@ -35,7 +39,13 @@ export default function LiteratureTable({
   showAllEntries = false,
   refreshData,
   tableKey, // Destructure the key prop
+  // Destructure pagination props, provide defaults if needed for standalone use (though less likely now)
+  currentPage = 1,
+  pageSize = 10,
+  onPaginationChange,
+  totalCount = 0, // Destructure totalCount, default to 0
 }: LiteratureTableProps) {
+  console.log('LiteratureTable - Received props - currentPage:', currentPage, 'pageSize:', pageSize, 'totalCount:', totalCount); // Log received props
   console.log('LiteratureTable - received entries:', entries);
   console.log('LiteratureTable - entries length:', entries?.length || 0);
   console.log('LiteratureTable - entries is array:', Array.isArray(entries));
@@ -49,8 +59,9 @@ export default function LiteratureTable({
   // Removed AI Modal/Progress state - handled by AIBatchProcessor internally
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [messageApi, contextHolder] = message.useMessage();
-  const [currentPage, setCurrentPage] = useState<number>(1); // Add state for current page
-  const [pageSize, setPageSize] = useState<number>(10); // Add state for page size, initialize with default
+  // Removed internal state for currentPage and pageSize
+  // const [currentPage, setCurrentPage] = useState<number>(1);
+  // const [pageSize, setPageSize] = useState<number>(10);
   // Removed triggerAiProcessing state
 
   console.log('Rendering LiteratureTable - Current statusFilter state:', statusFilter); // Log state value
@@ -320,11 +331,12 @@ export default function LiteratureTable({
 
   // Handle table changes (sorting, pagination)
   const handleTableChange: TableProps<BibEntry>['onChange'] = (pagination, filters, sorter) => {
-    // Update pagination state
-    setCurrentPage(pagination.current || 1);
-    setPageSize(pagination.pageSize || 10); // Use default if undefined
+    // Call the handler passed from the parent for pagination changes
+    if (onPaginationChange) {
+      onPaginationChange(pagination.current || 1, pagination.pageSize || 10);
+    }
 
-    // Update sorting state
+    // Update sorting state (remains internal to the table for now)
     if (sorter && 'field' in sorter && sorter.field) {
       setSortField(sorter.field as string);
       setSortOrder(sorter.order || null); // Allow resetting sort order
@@ -452,12 +464,13 @@ export default function LiteratureTable({
           pageSizeOptions: paginationConfig.pageSizeOptions,
           showSizeChanger: paginationConfig.showSizeChanger,
           showTotal: paginationConfig.showTotal,
-          total: sortedEntries.length, // Crucial: Provide the total number of items for pagination calculation
+          total: totalCount, // Use the totalCount prop from the parent
         }}
         expandable={{
           expandedRowRender: (record) => (
             <ExpandableRow
-              record={record} 
+              record={record}
+              screeningType={screeningType} // Pass screeningType down
               onUpdateAbstract={(id, abstract) => {
                 handleUpdateAbstract(id, abstract);
               }}

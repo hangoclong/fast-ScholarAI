@@ -136,9 +136,10 @@ The application uses an SQLite database to store all literature data and setting
 - **Abstract Screening:** (`/abstract-screening`) Displays entries marked 'included' during title screening. Users assign 'included', 'excluded', or 'maybe' status. Updates status via `/api/database?action=update-screening`.
 - **AI Assistance (Optional):**
     - Uses Google Gemini via the `/api/gemini` backend route (POST method).
-    - Requires a Gemini API key, saved via the Settings UI (`/api/database?action=saveApiKey`).
-    - Uses customizable prompts (base instructions), saved via the Settings page (`/api/database?action=savePrompt`).
+    - Requires a Gemini API key, saved via the "Edit AI Prompt" dialog (`/api/database?action=saveApiKey`).
+    - Uses customizable prompts (base instructions) specific to each screening type ('title' or 'abstract'), saved via the "Edit AI Prompt" dialog (`/api/database?action=savePrompt`, storing keys `ai_prompt_title` and `ai_prompt_abstract`).
     - **Batch Processing (`AIBatchProcessor.tsx`):**
+        - Fetches the appropriate prompt (`ai_prompt_title` or `ai_prompt_abstract`) from the database based on the current screening stage. **Crucially, the accuracy of the AI's task depends on the correct prompt being saved for the specific screening type.** If abstract screening seems to use title-screening logic, verify the content of the `ai_prompt_abstract` setting using the "Edit AI Prompt" dialog in the Abstract Screening UI.
         - Filters selected entries for 'pending' or 'maybe' status.
         - Iteratively processes entries in batches (default size 50).
         - For each batch:
@@ -191,9 +192,9 @@ The application uses an SQLite database to store all literature data and setting
 
 ## Key Components & Utilities
 
-- **`LiteratureTable.tsx`**: Central component for displaying entries in various stages. Uses Ant Design Table with features like sorting and expandable rows (details shown in `ExpandableRow.tsx`).
-- **`database.ts` (utils)**: Frontend functions for all database interactions via the API.
-- **`route.ts` (api/database)**: Backend logic for handling database requests.
+- **`LiteratureTable.tsx`**: Central component for displaying entries in various stages. Uses Ant Design Table with features like sorting, filtering, and expandable rows (`ExpandableRow.tsx`). Pagination state (`currentPage`, `pageSize`, `totalCount`) is now controlled by the parent component via props to ensure state persistence across data refreshes.
+- **`database.ts` (utils)**: Frontend functions for all database interactions via the API. Functions like `getTitleScreeningEntries` and `getDeduplicationReviewEntries` now support pagination parameters (`page`, `pageSize`) and return `{ entries: BibEntry[], totalCount: number }` or similar structure.
+- **`route.ts` (api/database)**: Backend logic for handling database requests. GET endpoints for fetching entry lists (e.g., `action=title-screening`, `action=deduplication-review`) now accept `page` and `pageSize` query parameters and return paginated results along with the total count.
 - **`deduplication.ts` (utils)**: Contains the core logic for identifying duplicate entries.
 - **`geminiService.ts` (services)**: Handles client-side logic for interacting with the Gemini API via the `/api/gemini` route, primarily through `processBatchPromptWithGemini`.
 
@@ -201,7 +202,7 @@ The application uses an SQLite database to store all literature data and setting
 
 *(Review and update based on current status)*
 
-1.  **Settings Page UI**: Implement a dedicated UI page for managing the Gemini API key and AI prompts.
+1.  **Settings Management**: While API keys and prompts can be managed via the `AIPromptDialog`, a dedicated Settings page could consolidate these and other future configurations.
 2.  **Authentication**: Add user accounts for personalized settings and data isolation.
 3.  **Export Options**: Add functionality to export included literature (or other subsets) in various formats (BibTeX, CSV, RIS).
 4.  **Advanced Filtering/Search**: Implement more robust filtering within tables (e.g., by keyword, source, status).

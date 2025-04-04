@@ -15,7 +15,7 @@ import {
   resetTitleScreeningStatus // Added reset function import
 } from '../utils/database';
 
-const { Title, Text } = Typography;
+const { Title, Text } = Typography; // Correctly placed destructuring
 const { Header, Content, Footer } = Layout;
 
 export default function TitleScreeningPage() {
@@ -23,8 +23,12 @@ export default function TitleScreeningPage() {
   const [entries, setEntries] = useState<BibEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [tableUpdateKey, setTableUpdateKey] = useState<number>(0); // Keep key state for refresh
+  // Add pagination state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10); // Default page size
+  const [totalEntries, setTotalEntries] = useState<number>(0); // State for total count
   const [stats, setStats] = useState<{
-    total: number;
+    total: number; // This might become redundant if totalEntries is accurate
     titleScreening: { pending: number; included: number; excluded: number; maybe: number };
     abstractScreening: { pending: number; included: number; excluded: number; maybe: number }; // Keep abstract stats
   }>({ 
@@ -35,33 +39,38 @@ export default function TitleScreeningPage() {
   const [messageApi, contextHolder] = message.useMessage();
   const [resetting, setResetting] = useState<boolean>(false); // State for reset button loading
 
-  // Load entries and statistics
-  const loadData = useCallback(async () => {
+  // Load entries and statistics (now with pagination)
+  const loadData = useCallback(async (page = currentPage, size = pageSize) => {
     setLoading(true);
     try {
-      // Check if database is initialized (optional)
-      // const isInitialized = await isDatabaseInitialized(); ...
+      // Fetch paginated entries for title screening
+      // NOTE: getTitleScreeningEntries needs modification to accept page/size
+      // and return { entries: BibEntry[], totalCount: number }
+      const result = await getTitleScreeningEntries(page, size);
+      console.log('TitleScreeningPage - Fetched data result:', result); // Log fetched result
+      setEntries(result?.entries || []);
+      const fetchedTotalCount = result?.totalCount || 0; // Get count
+      setTotalEntries(fetchedTotalCount); // Update total count
+      console.log('TitleScreeningPage - Setting totalEntries state to:', fetchedTotalCount); // Log state update
       
-      // Get entries for title screening (already filters duplicates)
-      const entriesData = await getTitleScreeningEntries(); 
-      setEntries(entriesData || []);
-      
-      // Get database statistics
-      const statsData = await getDatabaseStats();
-      setStats(statsData);
+      // Get database statistics (might need adjustment if total is handled differently)
+      const statsData = await getDatabaseStats(); // Keep fetching stats for now
+      setStats(statsData); // Update stats
 
     } catch (error) {
       console.error('Error loading data:', error);
       messageApi.error(`Failed to load data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setEntries([]); // Clear entries on error
+      setTotalEntries(0); // Reset total count on error
     } finally {
       setLoading(false);
     }
-  }, [messageApi]); // Added messageApi dependency
+  }, [messageApi, currentPage, pageSize]); // Add currentPage and pageSize dependencies
 
-  // Load data on component mount
+  // Load data on component mount and when pagination changes
   useEffect(() => {
-    loadData();
-  }, [loadData]); // Use loadData as dependency
+    loadData(currentPage, pageSize);
+  }, [loadData, currentPage, pageSize]); // Trigger loadData when page/size changes
 
   // Handle screening action (passed to LiteratureTable and AIBatchProcessor)
   const handleScreeningAction = async (id: string, status: ScreeningStatus, notes?: string, confidence?: number) => { // Added confidence parameter
@@ -91,9 +100,12 @@ export default function TitleScreeningPage() {
       // Force table re-render by changing key (if LiteratureTable uses it)
       setTableUpdateKey(prevKey => prevKey + 1);
 
-      // Refresh statistics
+      // Refresh statistics (consider if this needs pagination awareness too)
       const statsData = await getDatabaseStats();
       setStats(statsData);
+
+      // Optionally, reload current page data if the update might affect it
+      // await loadData(currentPage, pageSize); // Or rely on the key update below
 
       // Show success message
       messageApi.success(`Entry marked as ${status}`);
@@ -101,6 +113,13 @@ export default function TitleScreeningPage() {
       console.error('Error updating screening status:', error);
       messageApi.error('Failed to update screening status');
     }
+  };
+
+  // Handle pagination changes from LiteratureTable
+  const handlePaginationChange = (page: number, size: number) => {
+    setCurrentPage(page);
+    setPageSize(size);
+    // Data reloading is handled by the useEffect hook watching currentPage and pageSize
   };
 
   // Handle resetting title screening status for all entries (with Confirmation)
@@ -161,7 +180,7 @@ export default function TitleScreeningPage() {
             </Button>
             <Button 
               icon={<ReloadOutlined />} 
-              onClick={loadData}
+              onClick={() => loadData()} // Correctly call loadData in onClick
               loading={loading}
               disabled={resetting} // Disable if reset is in progress
             >
@@ -213,7 +232,7 @@ export default function TitleScreeningPage() {
         {/* Keep original Main Card with LiteratureTable */}
         <Card className="shadow-md hover:shadow-lg transition-all duration-300">
           <div className="mb-4">
-            <Text>
+            <Text> {/* Ensure Text is used correctly as a component */}
               Review the titles of the imported papers and decide whether to include or exclude them in your literature review.
               Use the AI batch processing feature to automatically screen multiple entries at once.
             </Text>
@@ -228,13 +247,19 @@ export default function TitleScreeningPage() {
           ) : (
             // Use LiteratureTable again
             <LiteratureTable 
-              entries={entries}
+              entries={entries} // Pass the fetched page of entries
               loading={loading}
               screeningType="title"
               onScreeningAction={handleScreeningAction}
               showScreeningControls={true}
-              refreshData={loadData} // Pass loadData for potential internal refresh in LiteratureTable
+              refreshData={() => loadData(currentPage, pageSize)} // Refresh current page
               tableKey={tableUpdateKey} // Pass the key down as a prop
+              // Pass pagination state and handler
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPaginationChange={handlePaginationChange}
+              // Pass total count for pagination display
+              totalCount={totalEntries}
             />
           )}
         </Card>

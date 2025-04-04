@@ -38,11 +38,11 @@ export async function POST(request: NextRequest) {
 
     // Adjust generation config - lower temperature might help with stricter JSON adherence
     const generationConfig = {
-      temperature: 0.5, // Lowered temperature
-      topK: 40,
-      topP: 0.9, // Slightly higher topP
+      temperature: 0.1, // Essential for consistency and accuracy. But resillience to slight variations is good for json output.
+      topK: 20, // Top-K sampling, set to 20 for more focused output
+      topP: 0.95, // Top-P sampling, set to 0.95 for a balance between creativity and coherence
       maxOutputTokens: 4096, // Increased max tokens for potentially large JSON array
-      // responseMimeType: "application/json", // Enable if model explicitly supports it
+      responseMimeType: "application/json", // Enable if model explicitly supports it
     };
 
     // Safety settings - adjust as needed

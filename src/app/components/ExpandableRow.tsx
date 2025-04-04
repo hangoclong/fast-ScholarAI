@@ -10,10 +10,11 @@ const { TextArea } = Input;
 
 interface ExpandableRowProps {
   record: BibEntry;
+  screeningType?: 'title' | 'abstract'; // Add screeningType prop
   onUpdateAbstract?: (id: string, abstract: string) => void;
 }
 
-const ExpandableRow: React.FC<ExpandableRowProps> = ({ record, onUpdateAbstract }) => {
+const ExpandableRow: React.FC<ExpandableRowProps> = ({ record, screeningType, onUpdateAbstract }) => {
   const [messageApi, contextHolder] = message.useMessage();
 
   // Copy citation to clipboard
@@ -339,22 +340,35 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({ record, onUpdateAbstract 
         </Col>
       </Row>
       
-      {/* Screening Notes */}
-      {(record.title_screening_notes || record.abstract_screening_notes) && (
+      {/* Screening Notes - Conditionally display based on screeningType */}
+      {screeningType && (record.title_screening_notes || record.abstract_screening_notes) && (
         <>
           <Divider orientation="left">Screening Notes</Divider>
-          {record.title_screening_notes && (
+          {screeningType === 'title' && record.title_screening_notes && (
             <div className="mb-2">
               <Text strong>Title Screening: </Text>
               <Text>{record.title_screening_notes}</Text>
             </div>
           )}
-          {record.abstract_screening_notes && (
+          {screeningType === 'abstract' && record.abstract_screening_notes && (
             <div className="mb-2">
               <Text strong>Abstract Screening: </Text>
               <Text>{record.abstract_screening_notes}</Text>
             </div>
           )}
+          {/* Fallback if screeningType is not provided but notes exist (shouldn't happen in screening pages) */}
+          {!screeningType && record.title_screening_notes && (
+             <div className="mb-2">
+               <Text strong>Title Screening: </Text>
+               <Text>{record.title_screening_notes}</Text>
+             </div>
+           )}
+           {!screeningType && record.abstract_screening_notes && (
+             <div className="mb-2">
+               <Text strong>Abstract Screening: </Text>
+               <Text>{record.abstract_screening_notes}</Text>
+             </div>
+           )}
         </>
       )}
     </div>

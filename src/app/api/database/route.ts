@@ -257,31 +257,64 @@ async function getAllEntries(): Promise<BibEntry[]> {
   }
 }
 
-// Get entries for title screening
-async function getTitleScreeningEntries(): Promise<BibEntry[]> {
+// Get entries for title screening (paginated)
+async function getTitleScreeningEntries(page: number = 1, pageSize: number = 10): Promise<{ entries: BibEntry[], totalCount: number }> {
   await applySchemaMigrations(); // Ensure schema is up-to-date
   const db = await getDbConnection();
   try {
-    const rows = await db.all(`SELECT * FROM entries WHERE deduplication_status != 'excluded' ORDER BY year DESC`);
-    return rows.map(convertRowToBibEntry);
+    const offset = (page - 1) * pageSize;
+    const baseCondition = "deduplication_status != 'excluded'";
+
+    // Get total count matching the criteria
+    const totalResult = await db.get<{ count: number }>(`SELECT COUNT(*) as count FROM entries WHERE ${baseCondition}`);
+    const totalCount = totalResult?.count || 0;
+
+    // Get paginated entries
+    const rows = await db.all(`
+      SELECT * FROM entries 
+      WHERE ${baseCondition} 
+      ORDER BY year DESC, id ASC 
+      LIMIT ? OFFSET ?
+    `, [pageSize, offset]);
+    
+    const entries = rows.map(convertRowToBibEntry);
+    
+    return { entries, totalCount };
   } catch (error) {
-    console.error('Error getting title screening entries:', error);
-    throw new Error('Failed to get title screening entries');
+    console.error('Error getting paginated title screening entries:', error);
+    throw new Error('Failed to get paginated title screening entries');
   } finally {
     await db.close();
   }
 }
 
-// Get entries for abstract screening
-async function getAbstractScreeningEntries(): Promise<BibEntry[]> {
+// Get entries for abstract screening (paginated)
+async function getAbstractScreeningEntries(page: number = 1, pageSize: number = 10): Promise<{ entries: BibEntry[], totalCount: number }> {
   await applySchemaMigrations(); // Ensure schema is up-to-date
   const db = await getDbConnection();
   try {
-    const rows = await db.all(`SELECT * FROM entries WHERE title_screening_status = 'included' ORDER BY year DESC`);
-    return rows.map(convertRowToBibEntry);
+    const offset = (page - 1) * pageSize;
+    // Condition: Included in title screening AND not excluded by deduplication
+    const baseCondition = "title_screening_status = 'included' AND deduplication_status != 'excluded'"; 
+
+    // Get total count matching the criteria
+    const totalResult = await db.get<{ count: number }>(`SELECT COUNT(*) as count FROM entries WHERE ${baseCondition}`);
+    const totalCount = totalResult?.count || 0;
+
+    // Get paginated entries
+    const rows = await db.all(`
+      SELECT * FROM entries 
+      WHERE ${baseCondition} 
+      ORDER BY year DESC, id ASC 
+      LIMIT ? OFFSET ?
+    `, [pageSize, offset]);
+    
+    const entries = rows.map(convertRowToBibEntry);
+    
+    return { entries, totalCount };
   } catch (error) {
-    console.error('Error getting abstract screening entries:', error);
-    throw new Error('Failed to get abstract screening entries');
+    console.error('Error getting paginated abstract screening entries:', error);
+    throw new Error('Failed to get paginated abstract screening entries');
   } finally {
     await db.close();
   }
@@ -354,7 +387,8 @@ async function updateScreeningStatusBatch(
           screeningType, confidence ?? null, // For abstract_screening_confidence CASE
           id // WHERE clause
         );
-        if (result.changes > 0) {
+        // Safely check if result exists and result.changes is a positive number
+        if (result && typeof result.changes === 'number' && result.changes > 0) {
           successCount++;
         } else {
           console.warn(`Server: No changes made during batch update for entry ${id}. Entry might not exist.`);
@@ -682,6 +716,35 @@ async function resetTitleScreeningStatus(): Promise<void> {
   }
 }
 
+// Reset the abstract screening status for all entries
+async function resetAbstractScreeningStatus(): Promise<void> {
+  await applySchemaMigrations(); // Ensure schema is up-to-date
+  const db = await getDbConnection();
+  try {
+    await db.run('BEGIN TRANSACTION');
+    // Only reset abstract status for entries that were included in title screening
+    // This prevents resetting abstracts for entries that never reached this stage.
+    // Also reset notes and confidence.
+    const result = await db.run(`
+      UPDATE entries 
+      SET 
+        abstract_screening_status = 'pending', 
+        abstract_screening_notes = NULL, 
+        abstract_screening_confidence = NULL 
+      WHERE title_screening_status = 'included' 
+        AND deduplication_status != 'excluded'
+    `); 
+    console.log(`Reset abstract screening status for ${result.changes} entries.`);
+    await db.run('COMMIT');
+  } catch (error) {
+    await db.run('ROLLBACK');
+    console.error('Error resetting abstract screening status:', error);
+    throw new Error(`Failed to reset abstract screening status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  } finally {
+    await db.close();
+  }
+}
+
 // --- API Route Handlers ---
 
 // Ensure database exists and schema is up-to-date before handling any request
@@ -722,15 +785,23 @@ export async function GET(request: NextRequest) {
         console.log(`Database API - Retrieved ${allEntries.length} entries`);
         return NextResponse.json({ success: true, data: allEntries });
       case 'title-screening':
-        console.log('Database API - Getting title screening entries...');
-        const titleScreeningEntries = await getTitleScreeningEntries();
-        console.log(`Database API - Retrieved ${titleScreeningEntries.length} title screening entries`);
-        return NextResponse.json({ success: true, data: titleScreeningEntries });
+        console.log('Database API - Getting title screening entries (paginated)...');
+        const tsPage = parseInt(searchParams.get('page') || '1', 10);
+        const tsPageSize = parseInt(searchParams.get('pageSize') || '10', 10);
+        console.log(`Database API - Page: ${tsPage}, PageSize: ${tsPageSize}`);
+        const titleScreeningResult = await getTitleScreeningEntries(tsPage, tsPageSize);
+        console.log(`Database API - Retrieved ${titleScreeningResult.entries.length} title screening entries for page ${tsPage}, total: ${titleScreeningResult.totalCount}`);
+        // Return data in the expected nested format { entries: [], totalCount: number }
+        return NextResponse.json({ success: true, data: titleScreeningResult }); 
       case 'abstract-screening':
-        console.log('Database API - Getting abstract screening entries...');
-        const abstractScreeningEntries = await getAbstractScreeningEntries();
-        console.log(`Database API - Retrieved ${abstractScreeningEntries.length} abstract screening entries`);
-        return NextResponse.json({ success: true, data: abstractScreeningEntries });
+        console.log('Database API - Getting abstract screening entries (paginated)...');
+        const asPage = parseInt(searchParams.get('page') || '1', 10);
+        const asPageSize = parseInt(searchParams.get('pageSize') || '10', 10);
+        console.log(`Database API - Page: ${asPage}, PageSize: ${asPageSize}`);
+        const abstractScreeningResult = await getAbstractScreeningEntries(asPage, asPageSize);
+        console.log(`Database API - Retrieved ${abstractScreeningResult.entries.length} abstract screening entries for page ${asPage}, total: ${abstractScreeningResult.totalCount}`);
+        // Return data in the expected nested format { entries: [], totalCount: number }
+        return NextResponse.json({ success: true, data: abstractScreeningResult });
       case 'included':
         console.log('Database API - Getting included entries...');
         const includedEntries = await getIncludedEntries();
@@ -876,6 +947,16 @@ export async function POST(request: NextRequest) {
         } catch (error) {
           console.error('Database API - Error resetting title screening status:', error);
           return NextResponse.json({ success: false, message: error instanceof Error ? error.message : 'Unknown error resetting title screening status' }, { status: 500 });
+        }
+      case 'reset-abstract-screening':
+        console.log('Database API - Processing reset abstract screening request...');
+        try {
+          await resetAbstractScreeningStatus();
+          console.log('Database API - Successfully reset abstract screening status for relevant entries.');
+          return NextResponse.json({ success: true });
+        } catch (error) {
+          console.error('Database API - Error resetting abstract screening status:', error);
+          return NextResponse.json({ success: false, message: error instanceof Error ? error.message : 'Unknown error resetting abstract screening status' }, { status: 500 });
         }
       default:
         console.error('Database API - Invalid POST action:', action);
